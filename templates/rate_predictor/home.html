@@ -1,0 +1,125 @@
+{% extends 'base.html' %}
+
+{% block title %}ZimRate Predictor - Home{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-md-12">
+        <div class="jumbotron bg-light p-5 rounded">
+            <h1 class="display-4">ZimRate Predictor</h1>
+            <p class="lead">Predicting the Zimbabwe Dollar (ZWL) to USD exchange rate based on social media and news analysis</p>
+            <hr class="my-4">
+            <p>Our AI-powered system analyzes sentiment from key financial figures' announcements and news to forecast exchange rate movements.</p>
+            <a class="btn btn-primary btn-lg" href="{% url 'rate_predictor:dashboard' %}">View Dashboard</a>
+        </div>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-md-6">
+        <div class="card rate-card h-100">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0">Latest Exchange Rate</h5>
+            </div>
+            <div class="card-body">
+                {% if latest_rate %}
+                <h3>{{ latest_rate.official_rate }} ZWL/USD</h3>
+                <p class="text-muted">Official Rate on {{ latest_rate.date }}</p>
+                {% if latest_rate.parallel_rate %}
+                <h4>{{ latest_rate.parallel_rate }} ZWL/USD</h4>
+                <p class="text-muted">Parallel Market Rate</p>
+                {% endif %}
+                <hr>
+                <a href="{% url 'rate_predictor:rate_detail' latest_rate.id %}" class="btn btn-outline-primary">View Details</a>
+                {% else %}
+                <p>No exchange rate data available yet.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card prediction-card h-100">
+            <div class="card-header bg-success text-white">
+                <h5 class="mb-0">Latest Prediction</h5>
+            </div>
+            <div class="card-body">
+                {% if latest_predictions %}
+                <div class="table-responsive">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Predicted Rate</th>
+                                <th>Confidence</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for prediction in latest_predictions %}
+                            <tr>
+                                <td>{{ prediction.target_date }}</td>
+                                <td>{{ prediction.predicted_official_rate }} ZWL/USD</td>
+                                <td>
+                                    <div class="progress" style="height: 20px;">
+                                        <div class="progress-bar bg-success" role="progressbar" 
+                                            style="width: {{ prediction.confidence_score|floatformat:0 }}%;" 
+                                            aria-valuenow="{{ prediction.confidence_score|floatformat:0 }}" 
+                                            aria-valuemin="0" aria-valuemax="100">
+                                            {{ prediction.confidence_score|floatformat:0 }}%
+                                        </div>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                <a href="{% url 'rate_predictor:prediction_list' %}" class="btn btn-outline-success">View All Predictions</a>
+                {% else %}
+                <p>No predictions available yet.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Recent Influential Content</h5>
+            </div>
+            <div class="card-body">
+                {% if recent_posts %}
+                <div class="list-group">
+                    {% for post in recent_posts %}
+                    <div class="list-group-item list-group-item-action flex-column align-items-start">
+                        <div class="d-flex w-100 justify-content-between">
+                            <h6 class="mb-1">
+                                {% if post.source_type == 'social' %}
+                                {{ post.social_source.name }} ({{ post.social_source.platform }})
+                                {% else %}
+                                {{ post.news_source.name }}
+                                {% endif %}
+                            </h6>
+                            <small class="text-muted">{{ post.published_at|date:"M d, Y" }}</small>
+                        </div>
+                        <p class="mb-1">{{ post.content|truncatechars:200 }}</p>
+                        <div class="d-flex justify-content-between align-items-center">
+                            <small class="text-muted">
+                                Sentiment: <span class="badge {% if post.sentiment == 'positive' %}bg-success{% elif post.sentiment == 'negative' %}bg-danger{% else %}bg-secondary{% endif %}">
+                                    {{ post.sentiment|title }}
+                                </span>
+                            </small>
+                            <small class="text-muted">Impact Score: {{ post.impact_score|floatformat:2 }}</small>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <p>No recent influential content available.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
