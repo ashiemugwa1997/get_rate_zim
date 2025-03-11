@@ -437,6 +437,12 @@ def run_news_scraper(days_back: int = 7, initial_scrape: bool = False) -> int:
     # Save articles to the database
     saved_count = save_articles_to_db(articles)
     
+    # Update the model based on whether this is initial or incremental
+    if initial_scrape:
+        train_model_with_initial_data()
+    else:
+        update_model_incrementally(days_back)
+    
     logger.info(f"Completed news scraping. Saved {saved_count} new articles.")
     return saved_count
 
@@ -444,14 +450,58 @@ def run_news_scraper(days_back: int = 7, initial_scrape: bool = False) -> int:
 def train_model_with_initial_data() -> None:
     """
     Train the model using the initial data scraped from the last 2 years.
-    
-    This is a placeholder function. Implement the actual model training logic here.
     """
-    logger.info("Training model with initial data...")
-    # Placeholder for model training logic
-    # For example, load the scraped articles from the database and train the model
-    # train_model(articles)
-    logger.info("Model training completed.")
+    from rate_predictor.models import Post
+    from rate_predictor.scrapers.sentiment_analyzer import analyze_posts_batch, get_overall_sentiment
+    
+    logger.info("Training model with initial historical data...")
+    
+    try:
+        # First get 2 years of data
+        days_back = 365 * 2
+        articles = scrape_all_news_sources(days_back)
+        saved_count = save_articles_to_db(articles)
+        logger.info(f"Scraped and saved {saved_count} historical articles")
+        
+        # Analyze the sentiment of all posts to build initial training data
+        processed_count = analyze_posts_batch(days_back)
+        logger.info(f"Processed sentiment for {processed_count} posts")
+        
+        # Get overall sentiment metrics to establish baseline
+        baseline_metrics = get_overall_sentiment(days_back)
+        logger.info(f"Established baseline sentiment metrics: {baseline_metrics}")
+        
+    except Exception as e:
+        logger.error(f"Error during initial model training: {e}")
+        raise
+    
+    logger.info("Initial model training completed successfully")
+
+def update_model_incrementally(days_back: int = 7) -> None:
+    """
+    Update the model with new data incrementally
+    
+    Args:
+        days_back: Number of days of new data to process
+    """
+    from rate_predictor.scrapers.sentiment_analyzer import analyze_posts_batch, get_overall_sentiment
+    
+    logger.info(f"Updating model with data from last {days_back} days...")
+    
+    try:
+        # Process new data
+        processed_count = analyze_posts_batch(days_back)
+        logger.info(f"Processed sentiment for {processed_count} new posts")
+        
+        # Get updated sentiment metrics
+        current_metrics = get_overall_sentiment(days_back)
+        logger.info(f"Updated sentiment metrics: {current_metrics}")
+        
+    except Exception as e:
+        logger.error(f"Error during incremental model update: {e}")
+        raise
+    
+    logger.info("Incremental model update completed successfully")
 
 if __name__ == "__main__":
     # For testing the scraper from command line

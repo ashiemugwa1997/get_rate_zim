@@ -103,7 +103,83 @@ class DashboardView(LoginRequiredMixin, TemplateView):
         ).order_by('target_date')[:30]  # Next 30 days
         context['future_predictions'] = future_predictions
         
+        # Get sentiment metrics from recent content
+        context.update(self.get_sentiment_metrics())
+        
+        # Calculate trend
+        if len(historical_rates) >= 2:
+            oldest_rate = historical_rates.first().official_rate
+            newest_rate = historical_rates.last().official_rate
+            trend_pct = ((newest_rate - oldest_rate) / oldest_rate) * 100
+            context['trend_percentage'] = abs(trend_pct)
+            context['trend_direction'] = 'up' if trend_pct > 0 else 'down' if trend_pct < 0 else 'stable'
+        
+        # Calculate premium if parallel rate exists
+        if historical_rates and historical_rates[0].parallel_rate:
+            premium = ((historical_rates[0].parallel_rate - historical_rates[0].official_rate) 
+                      / historical_rates[0].official_rate * 100)
+            context['premium_percentage'] = premium
+        
         return context
+    
+    def get_sentiment_metrics(self):
+        """Get sentiment analysis metrics for the dashboard"""
+        from rate_predictor.scrapers.sentiment_analyzer import get_overall_sentiment
+        from rate_predictor.models import Post
+        
+        # Get sentiment metrics for last 7 days
+        sentiment_metrics = get_overall_sentiment(days_back=7)
+        
+        # Count posts by source type
+        social_count = Post.objects.filter(
+            source_type='social',
+            published_at__gte=timezone.now() - datetime.timedelta(days=7)
+        ).count()
+        
+        news_count = Post.objects.filter(
+            source_type='news',
+            published_at__gte=timezone.now() - datetime.timedelta(days=7)
+        ).count()
+        
+        # Get high-impact announcements
+        announcements_count = Post.objects.filter(
+            published_at__gte=timezone.now() - datetime.timedelta(days=7),
+            impact_score__gte=0.7
+        ).count()
+        
+        return {
+            'sentiment_metrics': sentiment_metrics,
+            'social_media_count': social_count,
+            'news_count': news_count,
+            'announcements_count': announcements_count
+        }
+    
+    def get(self, request, *args, **kwargs):
+        """Handle GET requests and trigger Celery model updates"""
+        from rate_predictor.tasks import update_model_task
+        from rate_predictor.models import TaskProgress
+        
+        # Check if initial training is needed
+        initial_training_needed = not RatePrediction.objects.exists()
+        
+        # Check if a task is already running
+        running_task = TaskProgress.objects.filter(
+            status='running'
+        ).first()
+        
+        if not running_task:
+            # Queue the appropriate Celery task
+            task = update_model_task.delay(is_initial=initial_training_needed)
+            
+            # Store initial task progress
+            TaskProgress.objects.create(
+                task_id=task.id,
+                task_type='training' if initial_training_needed else 'scraping',
+                status='pending',
+                message='Task queued'
+            )
+        
+        return super().get(request, *args, **kwargs)
 
 
 # API Views
@@ -145,3 +221,23 @@ def prediction_api(request):
         })
     
     return JsonResponse({'status': 'success', 'data': data})
+
+
+def task_progress_api(request):
+    """API endpoint to get task progress"""
+    from .models import TaskProgress
+    
+    # Get the latest task
+    latest_task = TaskProgress.objects.first()
+    
+    if latest_task:
+        data = {
+            'task_id': latest_task.task_id,
+            'task_type': latest_task.task_type,
+            'status': latest_task.status,
+            'progress': latest_task.progress,
+            'message': latest_task.message,
+            'updated_at': latest_task.updated_at.isoformat()
+        }
+        return JsonResponse({'status': 'success', 'data': data})
+    return JsonResponse({'status': 'error', 'message': 'No tasks found'}, status=404)

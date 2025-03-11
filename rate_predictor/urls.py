@@ -15,4 +15,5 @@ urlpatterns = [
     # API endpoints
     path('api/latest-rate/', views.latest_rate_api, name='api_latest_rate'),
     path('api/predictions/', views.prediction_api, name='api_predictions'),
+    path('api/task-progress/', views.task_progress_api, name='task_progress_api'),
 ]

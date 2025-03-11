@@ -7,6 +7,19 @@
 {% endblock %}
 
 {% block content %}
+<!-- Task Progress Modal -->
+<div id="taskProgressModal" class="modal" style="display: none;">
+    <div class="modal-content">
+        <div class="progress-container">
+            <h3 id="taskTitle">Processing Data...</h3>
+            <div class="progress-bar">
+                <div id="progressFill" class="progress-fill"></div>
+            </div>
+            <p id="taskMessage" class="task-message">Initializing...</p>
+        </div>
+    </div>
+</div>
+
 <div class="row mb-4">
     <div class="col-md-12">
         <h1 class="mb-3">Exchange Rate Dashboard</h1>
@@ -434,5 +447,97 @@
         console.log(`Timeframe changed to ${days} days`);
         // Would update chart data here with new timeframe
     }
+
+    function checkTaskProgress() {
+        fetch('/api/task-progress/')
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    const task = data.data;
+                    
+                    // Show modal if task is running or pending
+                    if (task.status === 'running' || task.status === 'pending') {
+                        document.getElementById('taskProgressModal').style.display = 'block';
+                        document.getElementById('taskTitle').textContent = 
+                            task.task_type === 'training' ? 'Training Model...' : 'Updating Data...';
+                        document.getElementById('progressFill').style.width = task.progress + '%';
+                        document.getElementById('taskMessage').textContent = task.message;
+                        
+                        // Continue checking progress
+                        setTimeout(checkTaskProgress, 2000);
+                    } else if (task.status === 'completed') {
+                        // Hide modal and refresh page after completion
+                        document.getElementById('taskProgressModal').style.display = 'none';
+                        location.reload();
+                    } else if (task.status === 'failed') {
+                        // Show error message
+                        document.getElementById('taskMessage').textContent = 
+                            'Task failed: ' + task.message;
+                        document.getElementById('taskMessage').style.color = '#ff0000';
+                        setTimeout(() => {
+                            document.getElementById('taskProgressModal').style.display = 'none';
+                        }, 3000);
+                    }
+                }
+            })
+            .catch(error => {
+                console.error('Error checking task progress:', error);
+            });
+    }
+    
+    // Start checking progress when page loads
+    document.addEventListener('DOMContentLoaded', () => {
+        checkTaskProgress();
+    });
 </script>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+    .modal {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0, 0, 0, 0.5);
+        z-index: 1000;
+    }
+    
+    .modal-content {
+        background-color: white;
+        margin: 15% auto;
+        padding: 20px;
+        width: 80%;
+        max-width: 500px;
+        border-radius: 5px;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    }
+    
+    .progress-container {
+        text-align: center;
+    }
+    
+    .progress-bar {
+        width: 100%;
+        height: 20px;
+        background-color: #f0f0f0;
+        border-radius: 10px;
+        overflow: hidden;
+        margin: 20px 0;
+    }
+    
+    .progress-fill {
+        width: 0%;
+        height: 100%;
+        background-color: #4CAF50;
+        transition: width 0.3s ease;
+    }
+    
+    .task-message {
+        margin-top: 10px;
+        color: #666;
+    }
+</style>
 {% endblock %}

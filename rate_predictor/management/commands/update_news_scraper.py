@@ -1,5 +1,7 @@
 import os
 from django.core.management.base import BaseCommand
+from django.core.management import call_command
+from datetime import datetime
 from rate_predictor.scrapers.news_scraper import run_news_scraper, train_model_with_initial_data
 
 class Command(BaseCommand):
@@ -34,3 +36,14 @@ class Command(BaseCommand):
             # For example, call a function to train the model with the new articles
             # train_model_with_new_data()
             self.stdout.write(self.style.SUCCESS('Model updated successfully.'))
+
+        current_hour = datetime.now().hour
+        
+        try:
+            # Run incremental updates every 6 hours
+            self.stdout.write(self.style.NOTICE('Starting periodic model update...'))
+            call_command('update_model')
+            self.stdout.write(self.style.SUCCESS('Periodic model update completed'))
+            
+        except Exception as e:
+            self.stdout.write(self.style.ERROR(f'Error during periodic update: {str(e)}'))

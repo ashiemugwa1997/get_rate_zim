@@ -308,18 +308,23 @@ def save_posts_to_db(posts: List[Dict[str, Any]]) -> int:
     return saved_count
 
 
-def run_twitter_scraper(days_back: int = 7) -> int:
+def run_twitter_scraper(days_back: int = 7, initial_scrape: bool = False) -> int:
     """
     Run the Twitter scraper to collect tweets
     
     Args:
         days_back: Number of days back to consider
+        initial_scrape: Whether this is the initial scrape
         
     Returns:
         Number of posts scraped and saved
     """
     twitter = TwitterScraper()
     all_tweets = []
+    
+    # If initial scrape, use 2 years worth of data
+    if initial_scrape:
+        days_back = 365 * 2
     
     # Scrape tweets from influential accounts
     for account in INFLUENTIAL_ACCOUNTS:
@@ -359,12 +364,68 @@ def run_twitter_scraper(days_back: int = 7) -> int:
     return saved_count
 
 
-def run_scraper(days_back: int = 7) -> int:
+def train_model_with_initial_data() -> None:
+    """
+    Train the model using initial historical social media data
+    """
+    from rate_predictor.scrapers.sentiment_analyzer import analyze_posts_batch, get_overall_sentiment
+    
+    logger.info("Training model with initial social media data...")
+    
+    try:
+        # Get 2 years of social media data
+        saved_count = run_twitter_scraper(days_back=365*2, initial_scrape=True)
+        logger.info(f"Scraped and saved {saved_count} historical social media posts")
+        
+        # Analyze sentiment of all posts
+        processed_count = analyze_posts_batch(days_back=365*2)
+        logger.info(f"Processed sentiment for {processed_count} posts")
+        
+        # Get baseline sentiment metrics
+        baseline_metrics = get_overall_sentiment(days_back=365*2)
+        logger.info(f"Established baseline social media sentiment metrics: {baseline_metrics}")
+        
+    except Exception as e:
+        logger.error(f"Error during initial social media model training: {e}")
+        raise
+    
+    logger.info("Initial social media model training completed successfully")
+
+
+def update_model_incrementally(days_back: int = 7) -> None:
+    """
+    Update the model with new social media data incrementally
+    
+    Args:
+        days_back: Number of days of new data to process
+    """
+    from rate_predictor.scrapers.sentiment_analyzer import analyze_posts_batch, get_overall_sentiment
+    
+    logger.info(f"Updating model with social media data from last {days_back} days...")
+    
+    try:
+        # Process new data
+        processed_count = analyze_posts_batch(days_back)
+        logger.info(f"Processed sentiment for {processed_count} new posts")
+        
+        # Get updated sentiment metrics
+        current_metrics = get_overall_sentiment(days_back)
+        logger.info(f"Updated social media sentiment metrics: {current_metrics}")
+        
+    except Exception as e:
+        logger.error(f"Error during incremental social media model update: {e}")
+        raise
+    
+    logger.info("Incremental social media model update completed successfully")
+
+
+def run_scraper(days_back: int = 7, initial_scrape: bool = False) -> int:
     """
     Main function to run the social media scrapers
     
     Args:
         days_back: Number of days back to consider
+        initial_scrape: Whether this is the initial scrape
         
     Returns:
         Number of posts scraped and saved
@@ -372,12 +433,18 @@ def run_scraper(days_back: int = 7) -> int:
     logger.info(f"Starting social media scraping process for the past {days_back} days")
     
     # Currently only Twitter scraping implemented
-    saved_count = run_twitter_scraper(days_back)
+    saved_count = run_twitter_scraper(days_back, initial_scrape)
+    
+    # Update the model based on whether this is initial or incremental
+    if initial_scrape:
+        train_model_with_initial_data()
+    else:
+        update_model_incrementally(days_back)
     
     logger.info(f"Completed social media scraping. Saved {saved_count} new posts.")
     return saved_count
 
 
 if __name__ == "__main__":
-    # When run as script, execute the scraper
-    run_scraper()
+    # When run as script, execute the scraper with initial training
+    run_scraper(initial_scrape=True)

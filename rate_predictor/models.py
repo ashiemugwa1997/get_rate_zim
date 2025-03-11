@@ -82,7 +82,7 @@ class RatePrediction(models.Model):
     confidence_score = models.FloatField(default=0.5)  # 0.0 to 1.0
     influencing_posts = models.ManyToManyField(Post, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    updated_at = models.DateTimeField(auto_now_add=True)
     
     class Meta:
         ordering = ['-prediction_date', '-target_date']
@@ -103,3 +103,31 @@ class UserAlert(models.Model):
     def __str__(self):
         direction = "above" if self.is_above else "below"
         return f"Alert for {self.user.username} when rate is {direction} {self.rate_threshold}"
+
+
+class TaskProgress(models.Model):
+    """Model to track progress of background tasks like scraping and training"""
+    TASK_TYPES = (
+        ('scraping', 'Data Scraping'),
+        ('training', 'Model Training'),
+    )
+    STATUS_CHOICES = (
+        ('pending', 'Pending'),
+        ('running', 'Running'),
+        ('completed', 'Completed'),
+        ('failed', 'Failed'),
+    )
+    
+    task_id = models.CharField(max_length=255, unique=True)
+    task_type = models.CharField(max_length=50, choices=TASK_TYPES)
+    status = models.CharField(max_length=50, choices=STATUS_CHOICES, default='pending')
+    progress = models.IntegerField(default=0)  # Progress percentage
+    message = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['-created_at']
+    
+    def __str__(self):
+        return f"{self.task_type} - {self.status} ({self.progress}%)"
