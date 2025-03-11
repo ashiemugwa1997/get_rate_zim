@@ -1,0 +1,296 @@
+{% extends 'base.html' %}
+
+{% block title %}ZimRate Predictor - Exchange Rate Detail{% endblock %}
+
+{% block extra_head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-md-12">
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="{% url 'rate_predictor:home' %}">Home</a></li>
+                <li class="breadcrumb-item"><a href="{% url 'rate_predictor:rate_list' %}">Exchange Rates</a></li>
+                <li class="breadcrumb-item active" aria-current="page">Rate on {{ rate.date }}</li>
+            </ol>
+        </nav>
+        
+        <h1 class="mb-4">Exchange Rate Detail</h1>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-md-6">
+        <div class="card rate-card">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0">Official Exchange Rate</h5>
+            </div>
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-top">
+                    <div>
+                        <h2 class="display-4">{{ rate.official_rate }} <small class="text-muted">ZWL/USD</small></h2>
+                        <p class="lead text-muted">on {{ rate.date|date:"F j, Y" }}</p>
+                    </div>
+                    <div class="text-end">
+                        <p class="mb-1">Last Updated:</p>
+                        <p class="text-muted">{{ rate.updated_at|date:"F j, Y H:i" }}</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header bg-secondary text-white">
+                <h5 class="mb-0">Parallel Market Rate</h5>
+            </div>
+            <div class="card-body">
+                {% if rate.parallel_rate %}
+                <h2 class="display-4">{{ rate.parallel_rate }} <small class="text-muted">ZWL/USD</small></h2>
+                <p class="text-muted">Unofficial parallel market rate</p>
+                <p class="mb-0">Premium: 
+                    <span class="badge {% if premium_percentage > 50 %}bg-danger{% elif premium_percentage > 20 %}bg-warning{% else %}bg-success{% endif %}">
+                        {{ premium_percentage|default_if_none:0 }}%
+                    </span> 
+                    above official rate
+                </p>
+                {% else %}
+                <p class="lead">No parallel market data available for this date.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Rate Fluctuation</h5>
+            </div>
+            <div class="card-body">
+                <canvas id="rateHistoryChart" style="width: 100%; height: 300px;"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Predictions for this Date</h5>
+            </div>
+            <div class="card-body">
+                {% if predictions %}
+                <div class="table-responsive">
+                    <table class="table table-striped">
+                        <thead>
+                            <tr>
+                                <th>Predicted On</th>
+                                <th>Predicted Official Rate</th>
+                                <th>Predicted Parallel Rate</th>
+                                <th>Confidence</th>
+                                <th>Accuracy</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for prediction in predictions %}
+                            <tr>
+                                <td>{{ prediction.prediction_date|date:"M d, Y" }}</td>
+                                <td>{{ prediction.predicted_official_rate }} ZWL/USD</td>
+                                <td>
+                                    {% if prediction.predicted_parallel_rate %}
+                                    {{ prediction.predicted_parallel_rate }} ZWL/USD
+                                    {% else %}
+                                    <span class="text-muted">Not predicted</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <div class="progress" style="height: 20px;">
+                                        <div class="progress-bar {% if prediction.confidence_score >= 0.7 %}bg-success{% elif prediction.confidence_score >= 0.4 %}bg-warning{% else %}bg-danger{% endif %}" 
+                                             role="progressbar" 
+                                             style="width: {{ prediction.confidence_score|floatformat:2|mul:100 }}%;" 
+                                             aria-valuenow="{{ prediction.confidence_score|floatformat:2|mul:100 }}" 
+                                             aria-valuemin="0" 
+                                             aria-valuemax="100">
+                                            {{ prediction.confidence_score|floatformat:0|mul:100 }}%
+                                        </div>
+                                    </div>
+                                </td>
+                                <td>
+                                    {% with error=prediction.predicted_official_rate|sub:rate.official_rate|abs %}
+                                    {% with error_pct=error|div:rate.official_rate|mul:100 %}
+                                    <span class="badge {% if error_pct < 5 %}bg-success{% elif error_pct < 15 %}bg-warning{% else %}bg-danger{% endif %}">
+                                        {{ error_pct|floatformat:1 }}% off
+                                    </span>
+                                    {% endwith %}
+                                    {% endwith %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="alert alert-info">
+                    <p class="mb-0">No predictions were made for this specific date.</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Influential Content Prior to This Rate</h5>
+            </div>
+            <div class="card-body">
+                {% if posts_before %}
+                <div class="list-group">
+                    {% for post in posts_before %}
+                    <div class="list-group-item list-group-item-action">
+                        <div class="d-flex w-100 justify-content-between">
+                            <h5 class="mb-1">
+                                {% if post.source_type == 'social' %}
+                                {{ post.social_source.name }} ({{ post.social_source.platform }})
+                                {% else %}
+                                {{ post.news_source.name }}
+                                {% endif %}
+                            </h5>
+                            <small>{{ post.published_at|date:"M d, Y H:i" }}</small>
+                        </div>
+                        <p class="mb-1">{{ post.content }}</p>
+                        <div class="d-flex justify-content-between align-items-center">
+                            <small>
+                                Sentiment: 
+                                <span class="badge {% if post.sentiment == 'positive' %}bg-success{% elif post.sentiment == 'negative' %}bg-danger{% else %}bg-secondary{% endif %}">
+                                    {{ post.sentiment|title }}
+                                </span>
+                            </small>
+                            <small>
+                                Impact Score: 
+                                <span class="badge bg-info">
+                                    {{ post.impact_score|floatformat:2 }}
+                                </span>
+                            </small>
+                        </div>
+                        {% if post.url %}
+                        <div class="mt-2">
+                            <a href="{{ post.url }}" target="_blank" class="btn btn-sm btn-outline-secondary">View Original</a>
+                        </div>
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <p>No influential content detected prior to this rate change.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    // Fix for template filters that might be missing
+    document.addEventListener('DOMContentLoaded', function() {
+        // Fix confidence score display in progress bars
+        const progressBars = document.querySelectorAll('.progress-bar');
+        progressBars.forEach(bar => {
+            const rawValue = parseFloat(bar.getAttribute('aria-valuenow'));
+            if (!isNaN(rawValue) && rawValue <= 1.0) {
+                const percentage = Math.round(rawValue * 100);
+                bar.style.width = percentage + '%';
+                bar.setAttribute('aria-valuenow', percentage);
+                bar.textContent = percentage + '%';
+            }
+        });
+        
+        // Rate fluctuation chart
+        const ctx = document.getElementById('rateHistoryChart').getContext('2d');
+        
+        // This would normally be populated from the backend with historical data
+        // For now, we'll use placeholder data
+        const currentRate = {{ rate.official_rate }};
+        const currentDate = "{{ rate.date|date:'Y-m-d' }}";
+        
+        // Example data - in a real app, you'd pass this from the view
+        const chartData = {
+            labels: [
+                // Past dates would be populated from backend
+                // For example, 7 days before current date
+                "{{ rate.date|date:'Y-m-d' }}"
+            ],
+            official: [
+                // Historical official rates
+                currentRate
+            ],
+            parallel: [
+                // Historical parallel rates
+                {% if rate.parallel_rate %}{{ rate.parallel_rate }}{% else %}null{% endif %}
+            ]
+        };
+        
+        const rateChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: chartData.labels,
+                datasets: [
+                    {
+                        label: 'Official Rate',
+                        data: chartData.official,
+                        borderColor: 'rgb(0, 123, 255)',
+                        backgroundColor: 'rgba(0, 123, 255, 0.1)',
+                        borderWidth: 2,
+                        tension: 0.3
+                    },
+                    {
+                        label: 'Parallel Rate',
+                        data: chartData.parallel,
+                        borderColor: 'rgb(108, 117, 125)',
+                        backgroundColor: 'rgba(108, 117, 125, 0.1)',
+                        borderWidth: 2,
+                        borderDash: [5, 5],
+                        tension: 0.3
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    title: {
+                        display: true,
+                        text: 'Exchange Rate History'
+                    },
+                    tooltip: {
+                        mode: 'index',
+                        intersect: false,
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: false,
+                        title: {
+                            display: true,
+                            text: 'ZWL/USD'
+                        }
+                    },
+                    x: {
+                        title: {
+                            display: true,
+                            text: 'Date'
+                        }
+                    }
+                }
+            }
+        });
+    });
+</script>
+{% endblock %}

@@ -1,0 +1,223 @@
+{% extends 'base.html' %}
+
+{% block title %}ZimRate Predictor - Exchange Rates History{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-md-12">
+        <h1 class="mb-4">Exchange Rates History</h1>
+        
+        <div class="card">
+            <div class="card-header bg-primary text-white">
+                <div class="d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Historical ZWL to USD Rates</h5>
+                    <small>Showing official and parallel market rates</small>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <form method="get" class="row g-3">
+                        <div class="col-md-4">
+                            <label for="startDate" class="form-label">Start Date</label>
+                            <input type="date" class="form-control" id="startDate" name="start_date" value="{{ request.GET.start_date }}">
+                        </div>
+                        <div class="col-md-4">
+                            <label for="endDate" class="form-label">End Date</label>
+                            <input type="date" class="form-control" id="endDate" name="end_date" value="{{ request.GET.end_date }}">
+                        </div>
+                        <div class="col-md-4 d-flex align-items-end">
+                            <button type="submit" class="btn btn-primary me-2">Filter</button>
+                            <a href="{% url 'rate_predictor:rate_list' %}" class="btn btn-outline-secondary">Reset</a>
+                        </div>
+                    </form>
+                </div>
+                
+                {% if rates %}
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Date</th>
+                                <th>Official Rate (ZWL/USD)</th>
+                                <th>Parallel Rate (ZWL/USD)</th>
+                                <th>Premium %</th>
+                                <th>Daily Change %</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for rate in rates %}
+                            <tr>
+                                <td>{{ rate.date|date:"M d, Y" }}</td>
+                                <td>{{ rate.official_rate }}</td>
+                                <td>
+                                    {% if rate.parallel_rate %}
+                                    {{ rate.parallel_rate }}
+                                    {% else %}
+                                    <span class="text-muted">Not available</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if rate.parallel_rate %}
+                                    {% with premium_pct=rate.parallel_rate|sub:rate.official_rate|div:rate.official_rate|mul:100 %}
+                                    <span class="badge {% if premium_pct > 50 %}bg-danger{% elif premium_pct > 20 %}bg-warning{% else %}bg-success{% endif %}">
+                                        {{ premium_pct|floatformat:1 }}%
+                                    </span>
+                                    {% endwith %}
+                                    {% else %}
+                                    <span class="text-muted">N/A</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if previous_rates|get_item:rate.date %}
+                                    {% with prev_rate=previous_rates|get_item:rate.date %}
+                                    {% with change_pct=rate.official_rate|sub:prev_rate|div:prev_rate|mul:100 %}
+                                    <span class="{% if change_pct > 0 %}text-danger{% elif change_pct < 0 %}text-success{% else %}text-muted{% endif %}">
+                                        {% if change_pct > 0 %}+{% endif %}{{ change_pct|floatformat:2 }}%
+                                    </span>
+                                    {% endwith %}
+                                    {% endwith %}
+                                    {% else %}
+                                    <span class="text-muted">N/A</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <a href="{% url 'rate_predictor:rate_detail' rate.id %}" class="btn btn-sm btn-outline-primary">View Details</a>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                
+                {% if is_paginated %}
+                <nav aria-label="Page navigation" class="mt-4">
+                    <ul class="pagination justify-content-center">
+                        {% if page_obj.has_previous %}
+                        <li class="page-item">
+                            <a class="page-link" href="?page=1{% if request.GET.start_date %}&start_date={{ request.GET.start_date }}{% endif %}{% if request.GET.end_date %}&end_date={{ request.GET.end_date }}{% endif %}" aria-label="First">
+                                <span aria-hidden="true">&laquo;&laquo;</span>
+                            </a>
+                        </li>
+                        <li class="page-item">
+                            <a class="page-link" href="?page={{ page_obj.previous_page_number }}{% if request.GET.start_date %}&start_date={{ request.GET.start_date }}{% endif %}{% if request.GET.end_date %}&end_date={{ request.GET.end_date }}{% endif %}" aria-label="Previous">
+                                <span aria-hidden="true">&laquo;</span>
+                            </a>
+                        </li>
+                        {% else %}
+                        <li class="page-item disabled">
+                            <a class="page-link" href="#" aria-label="First">
+                                <span aria-hidden="true">&laquo;&laquo;</span>
+                            </a>
+                        </li>
+                        <li class="page-item disabled">
+                            <a class="page-link" href="#" aria-label="Previous">
+                                <span aria-hidden="true">&laquo;</span>
+                            </a>
+                        </li>
+                        {% endif %}
+                        
+                        {% for num in page_obj.paginator.page_range %}
+                            {% if page_obj.number == num %}
+                            <li class="page-item active"><a class="page-link" href="?page={{ num }}{% if request.GET.start_date %}&start_date={{ request.GET.start_date }}{% endif %}{% if request.GET.end_date %}&end_date={{ request.GET.end_date }}{% endif %}">{{ num }}</a></li>
+                            {% elif num > page_obj.number|add:'-3' and num < page_obj.number|add:'3' %}
+                            <li class="page-item"><a class="page-link" href="?page={{ num }}{% if request.GET.start_date %}&start_date={{ request.GET.start_date }}{% endif %}{% if request.GET.end_date %}&end_date={{ request.GET.end_date }}{% endif %}">{{ num }}</a></li>
+                            {% endif %}
+                        {% endfor %}
+                        
+                        {% if page_obj.has_next %}
+                        <li class="page-item">
+                            <a class="page-link" href="?page={{ page_obj.next_page_number }}{% if request.GET.start_date %}&start_date={{ request.GET.start_date }}{% endif %}{% if request.GET.end_date %}&end_date={{ request.GET.end_date }}{% endif %}" aria-label="Next">
+                                <span aria-hidden="true">&raquo;</span>
+                            </a>
+                        </li>
+                        <li class="page-item">
+                            <a class="page-link" href="?page={{ page_obj.paginator.num_pages }}{% if request.GET.start_date %}&start_date={{ request.GET.start_date }}{% endif %}{% if request.GET.end_date %}&end_date={{ request.GET.end_date }}{% endif %}" aria-label="Last">
+                                <span aria-hidden="true">&raquo;&raquo;</span>
+                            </a>
+                        </li>
+                        {% else %}
+                        <li class="page-item disabled">
+                            <a class="page-link" href="#" aria-label="Next">
+                                <span aria-hidden="true">&raquo;</span>
+                            </a>
+                        </li>
+                        <li class="page-item disabled">
+                            <a class="page-link" href="#" aria-label="Last">
+                                <span aria-hidden="true">&raquo;&raquo;</span>
+                            </a>
+                        </li>
+                        {% endif %}
+                    </ul>
+                </nav>
+                {% endif %}
+                
+                {% else %}
+                <div class="alert alert-info">
+                    <p class="mb-0">No exchange rate data available for the selected period.</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Rate Data Sources</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6>Official Rate Sources</h6>
+                        <ul>
+                            <li>Reserve Bank of Zimbabwe (RBZ) daily exchange rate publications</li>
+                            <li>Interbank foreign exchange market rates</li>
+                            <li>Foreign exchange auction system results</li>
+                        </ul>
+                    </div>
+                    <div class="col-md-6">
+                        <h6>Parallel Rate Sources</h6>
+                        <ul>
+                            <li>Market surveys from major urban centers</li>
+                            <li>Electronic money transfer rate monitoring</li>
+                            <li>Black market exchange points sampling</li>
+                        </ul>
+                    </div>
+                </div>
+                <p class="text-muted mt-3"><small>Note: The parallel market rate is provided for informational purposes only. ZimRate Predictor does not endorse or facilitate foreign currency trading outside of official channels.</small></p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Set min/max dates for the date filters
+        const startDateInput = document.getElementById('startDate');
+        const endDateInput = document.getElementById('endDate');
+        
+        if (startDateInput && endDateInput) {
+            // When start date changes, adjust the min date for end date
+            startDateInput.addEventListener('change', function() {
+                endDateInput.min = this.value;
+                if (endDateInput.value && endDateInput.value < this.value) {
+                    endDateInput.value = this.value;
+                }
+            });
+            
+            // When end date changes, adjust the max date for start date
+            endDateInput.addEventListener('change', function() {
+                startDateInput.max = this.value;
+                if (startDateInput.value && startDateInput.value > this.value) {
+                    startDateInput.value = this.value;
+                }
+            });
+        }
+    });
+</script>
+{% endblock %}

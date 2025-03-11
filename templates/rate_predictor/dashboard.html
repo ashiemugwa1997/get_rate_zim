@@ -1,0 +1,438 @@
+{% extends 'base.html' %}
+
+{% block title %}ZimRate Predictor - Dashboard{% endblock %}
+
+{% block extra_head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-md-12">
+        <h1 class="mb-3">Exchange Rate Dashboard</h1>
+        <p class="lead">Real-time analysis of ZWL/USD exchange rates and predictions based on social media and news sentiment</p>
+    </div>
+</div>
+
+<!-- Summary cards -->
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card text-white bg-primary mb-3">
+            <div class="card-header">Current Official Rate</div>
+            <div class="card-body">
+                {% if historical_rates.0 %}
+                <h2 class="card-title">{{ historical_rates.0.official_rate }} ZWL/USD</h2>
+                <p class="card-text">As of {{ historical_rates.0.date|date:"M d, Y" }}</p>
+                {% else %}
+                <h5 class="card-title">No data available</h5>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-white bg-secondary mb-3">
+            <div class="card-header">Current Parallel Rate</div>
+            <div class="card-body">
+                {% if historical_rates.0.parallel_rate %}
+                <h2 class="card-title">{{ historical_rates.0.parallel_rate }} ZWL/USD</h2>
+                <p class="card-text">Premium: {{ premium_percentage|default:0 }}% above official</p>
+                {% else %}
+                <h5 class="card-title">No data available</h5>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-white bg-success mb-3">
+            <div class="card-header">Next Week Prediction</div>
+            <div class="card-body">
+                {% if future_predictions.0 %}
+                <h2 class="card-title">{{ future_predictions.0.predicted_official_rate }} ZWL/USD</h2>
+                <p class="card-text">Confidence: {{ future_predictions.0.confidence_score|floatformat:0|mul:100 }}%</p>
+                {% else %}
+                <h5 class="card-title">No prediction available</h5>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-white bg-info mb-3">
+            <div class="card-header">30-Day Trend</div>
+            <div class="card-body">
+                {% if trend_direction == 'up' %}
+                <h2 class="card-title text-warning">↗️ Rising</h2>
+                <p class="card-text">+{{ trend_percentage|default:0|floatformat:1 }}% in the last 30 days</p>
+                {% elif trend_direction == 'down' %}
+                <h2 class="card-title">↘️ Falling</h2>
+                <p class="card-text">{{ trend_percentage|default:0|floatformat:1 }}% in the last 30 days</p>
+                {% else %}
+                <h2 class="card-title">↔️ Stable</h2>
+                <p class="card-text">{{ trend_percentage|default:0|floatformat:1 }}% in the last 30 days</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Main charts -->
+<div class="row mb-4">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Exchange Rate History & Prediction</h5>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <div class="btn-group" role="group" aria-label="Chart timeframe">
+                        <button type="button" class="btn btn-outline-primary btn-sm" onclick="updateTimeframe(30)">30 Days</button>
+                        <button type="button" class="btn btn-outline-primary btn-sm" onclick="updateTimeframe(90)">90 Days</button>
+                        <button type="button" class="btn btn-outline-primary btn-sm" onclick="updateTimeframe(180)">180 Days</button>
+                        <button type="button" class="btn btn-outline-primary btn-sm" onclick="updateTimeframe(365)">1 Year</button>
+                    </div>
+                </div>
+                <canvas id="rateHistoryChart" style="width: 100%; height: 350px;"></canvas>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Market Sentiment</h5>
+            </div>
+            <div class="card-body">
+                <canvas id="sentimentChart" style="width: 100%; height: 200px;"></canvas>
+                <hr>
+                <h6>Sentiment Sources</h6>
+                <ul class="list-group">
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        Social Media
+                        <span class="badge bg-primary rounded-pill">{{ social_media_count|default:0 }}</span>
+                    </li>
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        News Articles
+                        <span class="badge bg-primary rounded-pill">{{ news_count|default:0 }}</span>
+                    </li>
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        Financial Announcements
+                        <span class="badge bg-primary rounded-pill">{{ announcements_count|default:0 }}</span>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Recent predictions -->
+<div class="row mb-4">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header bg-success text-white">
+                <h5 class="mb-0">Future Rate Predictions</h5>
+            </div>
+            <div class="card-body">
+                {% if future_predictions %}
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Official Rate</th>
+                                <th>Parallel Rate</th>
+                                <th>% Change</th>
+                                <th>Confidence</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for prediction in future_predictions %}
+                            <tr>
+                                <td>{{ prediction.target_date|date:"M d, Y" }}</td>
+                                <td>{{ prediction.predicted_official_rate }} ZWL/USD</td>
+                                <td>
+                                    {% if prediction.predicted_parallel_rate %}
+                                    {{ prediction.predicted_parallel_rate }} ZWL/USD
+                                    {% else %}
+                                    <span class="text-muted">N/A</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if historical_rates.0 %}
+                                    {% with change_pct=prediction.predicted_official_rate|sub:historical_rates.0.official_rate|div:historical_rates.0.official_rate|mul:100 %}
+                                    <span class="{% if change_pct > 0 %}text-danger{% elif change_pct < 0 %}text-success{% else %}text-muted{% endif %}">
+                                        {% if change_pct > 0 %}+{% endif %}{{ change_pct|floatformat:2 }}%
+                                    </span>
+                                    {% endwith %}
+                                    {% else %}
+                                    <span class="text-muted">N/A</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <div class="progress" style="height: 20px;">
+                                        <div class="progress-bar {% if prediction.confidence_score >= 0.7 %}bg-success{% elif prediction.confidence_score >= 0.4 %}bg-warning{% else %}bg-danger{% endif %}" 
+                                             role="progressbar" 
+                                             style="width: {{ prediction.confidence_score|floatformat:2|mul:100 }}%;" 
+                                             aria-valuenow="{{ prediction.confidence_score|floatformat:2|mul:100 }}" 
+                                             aria-valuemin="0" 
+                                             aria-valuemax="100">
+                                            {{ prediction.confidence_score|floatformat:0|mul:100 }}%
+                                        </div>
+                                    </div>
+                                </td>
+                                <td>
+                                    <a href="{% url 'rate_predictor:prediction_detail' prediction.id %}" class="btn btn-sm btn-outline-primary">Details</a>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="alert alert-info">
+                    <p class="mb-0">No future predictions available at this time.</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Factors influencing rates -->
+<div class="row">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Key Influencing Factors</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6>Economic Factors</h6>
+                        <ul class="list-group mb-4">
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                Inflation Rate
+                                <span class="badge bg-warning rounded-pill">High Impact</span>
+                            </li>
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                Reserve Bank Policy
+                                <span class="badge bg-warning rounded-pill">High Impact</span>
+                            </li>
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                Trade Balance
+                                <span class="badge bg-info rounded-pill">Medium Impact</span>
+                            </li>
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                Government Spending
+                                <span class="badge bg-info rounded-pill">Medium Impact</span>
+                            </li>
+                        </ul>
+                    </div>
+                    <div class="col-md-6">
+                        <h6>Key Influencers</h6>
+                        <ul class="list-group">
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                Reserve Bank Governor
+                                <span class="badge bg-warning rounded-pill">High Influence</span>
+                            </li>
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                Finance Minister
+                                <span class="badge bg-warning rounded-pill">High Influence</span>
+                            </li>
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                Major Business Leaders
+                                <span class="badge bg-info rounded-pill">Medium Influence</span>
+                            </li>
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                International Financial Institutions
+                                <span class="badge bg-info rounded-pill">Medium Influence</span>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Fix confidence score display in progress bars
+        const progressBars = document.querySelectorAll('.progress-bar');
+        progressBars.forEach(bar => {
+            const rawValue = parseFloat(bar.getAttribute('aria-valuenow'));
+            if (!isNaN(rawValue) && rawValue <= 1.0) {
+                const percentage = Math.round(rawValue * 100);
+                bar.style.width = percentage + '%';
+                bar.setAttribute('aria-valuenow', percentage);
+                bar.textContent = percentage + '%';
+            }
+        });
+        
+        // Historical rates chart
+        setupRateHistoryChart();
+        
+        // Sentiment chart (donut)
+        setupSentimentChart();
+    });
+    
+    function setupRateHistoryChart() {
+        const ctx = document.getElementById('rateHistoryChart').getContext('2d');
+        
+        // In a real implementation, these would be populated from the backend with Django template variables
+        // For now, we'll use placeholder data
+        const historicalDates = [];
+        const historicalOfficialRates = [];
+        const historicalParallelRates = [];
+        const futureDates = [];
+        const predictedOfficialRates = [];
+        const predictedParallelRates = [];
+        
+        {% if historical_rates %}
+        {% for rate in historical_rates %}
+        historicalDates.push("{{ rate.date|date:'Y-m-d' }}");
+        historicalOfficialRates.push({{ rate.official_rate }});
+        {% if rate.parallel_rate %}
+        historicalParallelRates.push({{ rate.parallel_rate }});
+        {% else %}
+        historicalParallelRates.push(null);
+        {% endif %}
+        {% endfor %}
+        {% endif %}
+        
+        {% if future_predictions %}
+        {% for prediction in future_predictions %}
+        futureDates.push("{{ prediction.target_date|date:'Y-m-d' }}");
+        predictedOfficialRates.push({{ prediction.predicted_official_rate }});
+        {% if prediction.predicted_parallel_rate %}
+        predictedParallelRates.push({{ prediction.predicted_parallel_rate }});
+        {% else %}
+        predictedParallelRates.push(null);
+        {% endif %}
+        {% endfor %}
+        {% endif %}
+        
+        window.rateChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: [...historicalDates, ...futureDates],
+                datasets: [
+                    {
+                        label: 'Official Rate',
+                        data: [...historicalOfficialRates, ...Array(futureDates.length).fill(null)],
+                        borderColor: 'rgb(0, 123, 255)',
+                        backgroundColor: 'rgba(0, 123, 255, 0.1)',
+                        borderWidth: 2,
+                        tension: 0.3,
+                        pointRadius: 3
+                    },
+                    {
+                        label: 'Parallel Rate',
+                        data: [...historicalParallelRates, ...Array(futureDates.length).fill(null)],
+                        borderColor: 'rgb(108, 117, 125)',
+                        backgroundColor: 'rgba(108, 117, 125, 0.1)',
+                        borderWidth: 2,
+                        borderDash: [5, 5],
+                        tension: 0.3,
+                        pointRadius: 3
+                    },
+                    {
+                        label: 'Predicted Official Rate',
+                        data: [...Array(historicalDates.length).fill(null), ...predictedOfficialRates],
+                        borderColor: 'rgb(40, 167, 69)',
+                        backgroundColor: 'rgba(40, 167, 69, 0.1)',
+                        borderWidth: 2,
+                        borderDash: [10, 5],
+                        tension: 0.3,
+                        pointRadius: 3
+                    },
+                    {
+                        label: 'Predicted Parallel Rate',
+                        data: [...Array(historicalDates.length).fill(null), ...predictedParallelRates],
+                        borderColor: 'rgb(255, 193, 7)',
+                        backgroundColor: 'rgba(255, 193, 7, 0.1)',
+                        borderWidth: 2,
+                        borderDash: [10, 5],
+                        tension: 0.3,
+                        pointRadius: 3
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: {
+                        position: 'top',
+                    },
+                    tooltip: {
+                        mode: 'index',
+                        intersect: false
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: false,
+                        title: {
+                            display: true,
+                            text: 'ZWL/USD Rate'
+                        }
+                    },
+                    x: {
+                        title: {
+                            display: true,
+                            text: 'Date'
+                        }
+                    }
+                }
+            }
+        });
+    }
+    
+    function setupSentimentChart() {
+        const ctx = document.getElementById('sentimentChart').getContext('2d');
+        
+        // Placeholder data - would come from backend
+        const sentimentData = {
+            labels: ['Positive', 'Neutral', 'Negative'],
+            data: [30, 50, 20], // percentages
+            backgroundColor: [
+                'rgba(40, 167, 69, 0.7)',  // green
+                'rgba(108, 117, 125, 0.7)', // gray
+                'rgba(220, 53, 69, 0.7)'    // red
+            ]
+        };
+        
+        new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels: sentimentData.labels,
+                datasets: [{
+                    label: 'Sentiment Analysis',
+                    data: sentimentData.data,
+                    backgroundColor: sentimentData.backgroundColor,
+                    hoverOffset: 4
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                    },
+                    title: {
+                        display: true,
+                        text: '7-Day Sentiment Analysis'
+                    }
+                }
+            }
+        });
+    }
+    
+    function updateTimeframe(days) {
+        // In a real app, this would make an AJAX request to get new data
+        // For now, we'll just log the request
+        console.log(`Timeframe changed to ${days} days`);
+        // Would update chart data here with new timeframe
+    }
+</script>
+{% endblock %}
