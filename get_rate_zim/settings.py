@@ -39,7 +39,8 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'rate_predictor',
-    'django_celery_beat',  # Add this line
+    'django_celery_beat',
+    'django_celery_results',
 ]
 
 MIDDLEWARE = [
@@ -128,12 +129,17 @@ STATICFILES_DIRS = [os.path.join(BASE_DIR, 'static')]
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # Celery Configuration
-CELERY_BROKER_URL = 'redis://172.17.0.1:6379/0'  # WSL IP address
-CELERY_RESULT_BACKEND = 'redis://172.17.0.1:6379/0'
+CELERY_BROKER_URL = None  # Disable broker
+CELERY_TASK_ALWAYS_EAGER = True  # Run tasks synchronously
+CELERY_TASK_EAGER_PROPAGATES = True  # Propagate exceptions in eager mode
+CELERY_RESULT_BACKEND = 'django-db'  # Use Django DB for results
+CELERY_CACHE_BACKEND = 'django-cache'
 CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE = TIME_ZONE
+CELERY_TASK_TRACK_STARTED = True
+CELERY_TASK_TIME_LIMIT = 30 * 60  # 30 minutes timeout
 
 # Celery Beat Settings
 CELERY_BEAT_SCHEDULER = 'django_celery_beat.schedulers:DatabaseScheduler'

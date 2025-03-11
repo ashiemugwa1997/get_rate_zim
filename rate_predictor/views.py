@@ -4,6 +4,9 @@ from django.views.generic import ListView, DetailView, TemplateView
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.utils import timezone
 import datetime
+import logging
+
+logger = logging.getLogger(__name__)
 
 from .models import ExchangeRate, RatePrediction, Post, SocialMediaSource, NewsSource
 
@@ -155,29 +158,28 @@ class DashboardView(LoginRequiredMixin, TemplateView):
         }
     
     def get(self, request, *args, **kwargs):
-        """Handle GET requests and trigger Celery model updates"""
+        """Handle GET requests and trigger updates"""
         from rate_predictor.tasks import update_model_task
-        from rate_predictor.models import TaskProgress
+        from rate_predictor.models import RatePrediction, TaskProgress
         
-        # Check if initial training is needed
-        initial_training_needed = not RatePrediction.objects.exists()
-        
-        # Check if a task is already running
-        running_task = TaskProgress.objects.filter(
-            status='running'
-        ).first()
-        
-        if not running_task:
-            # Queue the appropriate Celery task
-            task = update_model_task.delay(is_initial=initial_training_needed)
+        try:
+            # Check if initial training is needed
+            initial_training_needed = not RatePrediction.objects.exists()
             
-            # Store initial task progress
+            # Create task progress record
+            task_id = 'task_' + timezone.now().strftime('%Y%m%d_%H%M%S')
             TaskProgress.objects.create(
-                task_id=task.id,
+                task_id=task_id,
                 task_type='training' if initial_training_needed else 'scraping',
                 status='pending',
-                message='Task queued'
+                message='Task starting...'
             )
+            
+            # Execute task synchronously since CELERY_TASK_ALWAYS_EAGER is True
+            update_model_task.delay(is_initial=initial_training_needed)
+            
+        except Exception as e:
+            logger.error(f"Error in dashboard task execution: {e}")
         
         return super().get(request, *args, **kwargs)
 

@@ -1,6 +1,8 @@
 import os
 from celery import Celery
-from celery.schedules import crontab
+from celery.utils.log import get_task_logger
+
+logger = get_task_logger(__name__)
 
 # Set the default Django settings module
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'get_rate_zim.settings')
@@ -14,10 +16,7 @@ app.config_from_object('django.conf:settings', namespace='CELERY')
 # Auto-discover tasks in all registered Django apps
 app.autodiscover_tasks()
 
-# Configure periodic tasks
-app.conf.beat_schedule = {
-    'update-model-every-6-hours': {
-        'task': 'rate_predictor.tasks.update_model_periodic',
-        'schedule': crontab(hour='*/6'),  # Run every 6 hours
-    },
-}
+@app.task(bind=True)
+def debug_task(self):
+    """Task to help debug celery configuration"""
+    logger.info(f'Request: {self.request!r}')

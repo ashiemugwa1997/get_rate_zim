@@ -19,7 +19,7 @@ from urllib.parse import urljoin
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname=s - %(message)s',
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',  # Fixed format string
     handlers=[
         logging.FileHandler("news_scraper.log"),
         logging.StreamHandler()
