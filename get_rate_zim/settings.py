@@ -12,6 +12,7 @@ https://docs.djangoproject.com/en/5.1/ref/settings/
 
 from pathlib import Path
 import os
+from decouple import config, Csv
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -21,12 +22,12 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/5.1/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-zx(nwavi*$)j1a=*#dpe9-pgkx$rqzr7x8t$rpn5vh2@7m25vb'
+SECRET_KEY = config('SECRET_KEY', default='django-insecure-zx(nwavi*$)j1a=*#dpe9-pgkx$rqzr7x8t$rpn5vh2@7m25vb')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = config('DEBUG', default=True, cast=bool)
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='127.0.0.1,localhost', cast=Csv())
 
 
 # Application definition
@@ -84,6 +85,20 @@ DATABASES = {
     }
 }
 
+# Use PostgreSQL in production
+if not DEBUG:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': config('DB_NAME', default='get_rate_zim'),
+            'USER': config('DB_USER', default='postgres'),
+            'PASSWORD': config('DB_PASSWORD', default=''),
+            'HOST': config('DB_HOST', default='localhost'),
+            'PORT': config('DB_PORT', default='5432'),
+            'CONN_MAX_AGE': 600,  # 10 minutes connection persistence
+        }
+    }
+
 
 # Password validation
 # https://docs.djangoproject.com/en/5.1/ref/settings/#auth-password-validators
@@ -128,9 +143,20 @@ STATICFILES_DIRS = [os.path.join(BASE_DIR, 'static')]
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
+# Cache settings
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        'LOCATION': 'unique-snowflake',
+    }
+}
+
 # Celery Configuration
-CELERY_BROKER_URL = None  # Disable broker
-CELERY_TASK_ALWAYS_EAGER = True  # Run tasks synchronously
+CELERY_BROKER_URL = 'memory://'  # Use in-memory broker for development
+CELERY_BROKER_CONNECTION_RETRY = True
+CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
+CELERY_BROKER_CONNECTION_MAX_RETRIES = 10
+CELERY_TASK_ALWAYS_EAGER = True  # Run tasks synchronously in development
 CELERY_TASK_EAGER_PROPAGATES = True  # Propagate exceptions in eager mode
 CELERY_RESULT_BACKEND = 'django-db'  # Use Django DB for results
 CELERY_CACHE_BACKEND = 'django-cache'
@@ -148,3 +174,134 @@ CELERY_BEAT_SCHEDULER = 'django_celery_beat.schedulers:DatabaseScheduler'
 LOGIN_REDIRECT_URL = 'rate_predictor:dashboard'
 LOGOUT_REDIRECT_URL = 'rate_predictor:home'
 LOGIN_URL = 'login'
+
+# Security settings for production
+if not DEBUG:
+    SECURE_SSL_REDIRECT = True
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SECURE_HSTS_SECONDS = 31536000  # 1 year
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True
+    SECURE_CONTENT_TYPE_NOSNIFF = True
+    SECURE_BROWSER_XSS_FILTER = True
+    X_FRAME_OPTIONS = 'DENY'
+    
+    # Use Redis as Celery broker in production
+    CELERY_BROKER_URL = config('REDIS_URL', default='redis://127.0.0.1:6379/0')
+    CELERY_RESULT_BACKEND = config('REDIS_URL', default='redis://127.0.0.1:6379/0')
+    CELERY_TASK_ALWAYS_EAGER = False  # Don't run tasks synchronously in production
+    
+    # Cache settings for improved performance
+    CACHES = {
+        'default': {
+            'BACKEND': 'django.core.cache.backends.redis.RedisCache',
+            'LOCATION': config('REDIS_URL', default='redis://127.0.0.1:6379/1'),
+            'TIMEOUT': 300,  # 5 minutes
+        }
+    }
+
+# Rate Scraping Settings
+RATE_SOURCES = {
+    'rbz': 'https://www.rbz.co.zw/index.php/research/markets/exchange-rates',
+    'interbank': 'https://www.bankers.org.zw/market-rates',
+    'parallel': None  # Will require manual input or alternative sources
+}
+SCRAPER_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+SCRAPER_TIMEOUT = 30  # seconds
+SCRAPING_INTERVAL = 6  # hours
+
+# Scraping Configuration
+SCRAPING = {
+    'USER_AGENT_ROTATION': True,
+    'PROXY_ROTATION': config('USE_PROXIES', default=False, cast=bool),
+    'DEFAULT_DELAY': config('SCRAPE_DELAY', default=2, cast=float),
+    'MAX_RETRIES': config('SCRAPE_MAX_RETRIES', default=3, cast=int),
+    'REQUEST_TIMEOUT': config('SCRAPE_TIMEOUT', default=15, cast=int),
+    'MAX_ARTICLES_PER_SOURCE': config('MAX_ARTICLES_PER_SOURCE', default=100, cast=int),
+    'RELEVANCE_THRESHOLD': config('RELEVANCE_THRESHOLD', default=0.4, cast=float),
+    'ASYNC_SCRAPING': config('ASYNC_SCRAPING', default=False, cast=bool),
+}
+
+# Twitter API credentials
+TWITTER_API_KEY = config('TWITTER_API_KEY', default='')
+TWITTER_API_SECRET = config('TWITTER_API_SECRET', default='')
+TWITTER_ACCESS_TOKEN = config('TWITTER_ACCESS_TOKEN', default='')
+TWITTER_ACCESS_SECRET = config('TWITTER_ACCESS_SECRET', default='')
+
+# Proxy configuration (if needed)
+PROXY_LIST = config('PROXY_LIST', default='', cast=Csv())
+
+# Rate limiting settings for API
+API_RATE_LIMIT = {
+    'DEFAULT': config('API_RATE_DEFAULT', default='100/hour'),
+    'LATEST_RATE': config('API_RATE_LATEST', default='1000/day'),
+    'PREDICTIONS': config('API_RATE_PREDICTIONS', default='2000/day'),
+}
+
+# Rate Alert Settings
+RATE_CHANGE_ALERT_THRESHOLD = 0.05  # 5% change triggers alert
+ENABLE_EMAIL_ALERTS = True
+ENABLE_SMS_ALERTS = False
+
+# Manual Rate Input Settings
+RATE_VERIFICATION_REQUIRED = True  # Admin verification for user submissions
+MIN_SOURCES_REQUIRED = 2  # Minimum sources needed for rate verification
+RATE_SUBMISSION_LIMIT = 5  # Per user per day
+
+# Prediction Settings
+PREDICTION_WINDOW = 7  # Days ahead to predict
+HISTORICAL_WINDOW = 60  # Days of historical data to use
+ML_MODEL_TYPE = 'arima'  # Statistical model type
+MODEL_RETRAINING_FREQUENCY = 7  # Days between model retraining
+PREDICTION_CONFIDENCE_THRESHOLD = 0.85
+
+# Logging
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '{levelname} {asctime} {module} {process:d} {thread:d} {message}',
+            'style': '{',
+        },
+        'simple': {
+            'format': '{levelname} {message}',
+            'style': '{',
+        },
+    },
+    'handlers': {
+        'console': {
+            'level': 'INFO',
+            'class': 'logging.StreamHandler',
+            'formatter': 'simple',
+        },
+        'file': {
+            'level': 'INFO',
+            'class': 'logging.FileHandler',
+            'filename': os.path.join(BASE_DIR, 'app.log'),
+            'formatter': 'verbose',
+        },
+    },
+    'root': {
+        'handlers': ['console', 'file'],
+        'level': 'INFO',
+    },
+    'loggers': {
+        'news_scraper': {
+            'handlers': ['console', 'file'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'social_scraper': {
+            'handlers': ['console', 'file'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'rate_predictor': {
+            'handlers': ['console', 'file'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+    }
+}

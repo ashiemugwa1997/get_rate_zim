@@ -1,173 +1,133 @@
 """
-Relevance detection module for ZimRate Predictor
+Relevance detector for ZimRate Predictor
 
-This module contains functions to determine the relevance of articles and posts
-to Zimbabwe's currency and economy using advanced NLP techniques.
+This module provides functions to detect whether content is relevant to
+Zimbabwe's currency and exchange rates.
 """
 
-import logging
 import re
-from typing import Dict, List, Set, Optional
+import logging
+from typing import Optional, List, Dict, Union
 
-# Configure logging
 logger = logging.getLogger("relevance_detector")
 
-# Try to import spaCy if available
-try:
-    import spacy
-    try:
-        nlp = spacy.load("en_core_web_sm")
-        SPACY_AVAILABLE = True
-        logger.info("Using spaCy for enhanced relevance detection")
-    except IOError:
-        logger.warning("spaCy model not found. To install: python -m spacy download en_core_web_sm")
-        SPACY_AVAILABLE = False
-except ImportError:
-    SPACY_AVAILABLE = False
-    logger.warning("spaCy not available. Using fallback keyword matching")
-
-# Currency-related entity types for spaCy
-CURRENCY_ENTITIES = {"MONEY", "PERCENT", "QUANTITY"}
-
-# Enhanced keywords with categories and weights
-KEYWORDS = {
-    "high_relevance": {
-        "zimbabwe dollar": 1.0, 
-        "zwl": 1.0, 
-        "zim dollar": 1.0,
-        "zimbabwean currency": 1.0,
-        "rbz": 0.9,
-        "reserve bank of zimbabwe": 0.9
-    },
-    "medium_relevance": {
-        "exchange rate": 0.7,
-        "forex": 0.7,
-        "foreign currency": 0.7,
-        "parallel market": 0.8,
-        "black market": 0.8,
-        "currency trading": 0.6
-    },
-    "context": {
-        "inflation": 0.4,
-        "economy": 0.3,
-        "monetary policy": 0.5,
-        "interest rate": 0.4,
-        "zimbabwe": 0.3,
-        "harare": 0.2
-    }
+# Keywords with weighted relevance scores
+KEYWORD_WEIGHTS = {
+    # Currency terms - highest relevance
+    "zimbabwe dollar": 1.0,
+    "zwl": 1.0,
+    "rtgs dollar": 1.0, 
+    "bond note": 0.9,
+    "zim dollar": 0.9,
+    
+    # Exchange rate terms
+    "exchange rate": 0.7,
+    "currency rate": 0.7,
+    "parallel rate": 0.8,
+    "parallel market": 0.8,
+    "black market rate": 0.8,
+    "official rate": 0.8,
+    "rbz rate": 0.8,
+    "forex rate": 0.7,
+    "zw/usd": 0.9,
+    "zwl/usd": 0.9,
+    "z$/usd": 0.9,
+    
+    # Financial institutions
+    "reserve bank of zimbabwe": 0.6,
+    "rbz": 0.6,
+    "zimbabwe central bank": 0.6,
+    "zimswitch": 0.5,
+    "bureau de change": 0.5,
+    
+    # Economic indicators
+    "zimbabwe inflation": 0.6,
+    "zim inflation": 0.6,
+    "currency depreciation": 0.5,
+    "monetary policy": 0.5,
+    "forex shortage": 0.6,
+    "currency shortage": 0.6,
+    "currency control": 0.5,
+    
+    # Less specific but still relevant
+    "zimbabwe economy": 0.4,
+    "zim economy": 0.4,
+    "economic crisis": 0.3,
+    "foreign currency": 0.3,
+    "usd": 0.2,
+    "us dollar": 0.2
 }
 
-def simple_keyword_relevance(text: str) -> float:
-    """
-    Calculate relevance score based on simple keyword matching.
-    
-    Args:
-        text: Text to analyze
-        
-    Returns:
-        Relevance score between 0.0 and 1.0
-    """
-    if not text:
-        return 0.0
-        
-    text_lower = text.lower()
-    score = 0.0
-    
-    # Check for keywords in each category
-    for category, words in KEYWORDS.items():
-        for word, weight in words.items():
-            if word in text_lower:
-                score += weight
-    
-    # Cap the score at 1.0
-    return min(1.0, score)
-
-def calculate_relevance_score(text: str) -> float:
-    """
-    Calculate relevance score using NLP techniques if available.
-    
-    Args:
-        text: Text to analyze
-        
-    Returns:
-        Relevance score between 0.0 and 1.0
-    """
-    if not text:
-        return 0.0
-    
-    if not SPACY_AVAILABLE:
-        # Fallback to keyword matching if NLP not available
-        return simple_keyword_relevance(text)
-    
-    try:
-        # Normalize text
-        text_lower = text.lower()
-        
-        # Process with SpaCy
-        doc = nlp(text[:10000])  # Limit text length to avoid memory issues
-        
-        # Check for currency entities
-        entity_score = 0.0
-        has_currency = False
-        for entity in doc.ents:
-            if entity.label_ in CURRENCY_ENTITIES:
-                entity_score += 0.3
-                has_currency = True
-            if "ZIM" in entity.text or "Zimbabwe" in entity.text:
-                entity_score += 0.2
-        
-        # Cap entity score
-        entity_score = min(0.5, entity_score)
-        
-        # Keyword scoring with context
-        keyword_score = simple_keyword_relevance(text_lower)
-        
-        # Cap keyword score
-        keyword_score = min(0.7, keyword_score)
-        
-        # Combine scores
-        score = entity_score + keyword_score
-        
-        # Ensure we don't exceed 1.0
-        return min(1.0, score)
-    except Exception as e:
-        logger.error(f"Error in NLP relevance detection: {e}")
-        # Fall back to simple keyword matching
-        return simple_keyword_relevance(text)
+# Regex patterns for currency values and rates
+CURRENCY_PATTERNS = [
+    r'\b\d+(?:[\.,]\d+)?\s*(?:ZWL|zwl|Z\$|RTGS|rtgs)\b',  # e.g. 350 ZWL, 350.50 Z$
+    r'\b(?:ZWL|zwl|Z\$|RTGS|rtgs)\s*\d+(?:[\.,]\d+)?\b',  # e.g. ZWL 350, Z$ 350.50
+    r'\b\d+(?:[\.,]\d+)?\s*(?:USD|usd|\$)(?:\s*:\s*|\s*=\s*)\d+(?:[\.,]\d+)?\s*(?:ZWL|zwl|Z\$)\b',  # e.g. 1 USD = 350 ZWL
+    r'\b\$1\s*(?:to|:|\=)\s*(?:ZWL|zwl|Z\$|RTGS|rtgs)?\s*\d+(?:[\.,]\d+)?\b'  # e.g. $1 to ZWL 350
+]
 
 def is_relevant(title: str, content: str, threshold: float = 0.4) -> bool:
     """
-    Determine if content is relevant based on title and body.
+    Determine if content is relevant to Zimbabwe currency rates.
     
     Args:
-        title: Content title
-        content: Content body
-        threshold: Minimum score to consider relevant
+        title: Title or headline of the content
+        content: Main text content
+        threshold: Minimum relevance score to consider relevant (0.0-1.0)
         
     Returns:
-        Boolean indicating if content is relevant
+        Boolean indicating relevance
     """
-    # Title is more important, so weight it higher
-    title_score = calculate_relevance_score(title) * 1.5
-    content_score = calculate_relevance_score(content)
+    # Combine title and content, with title having more weight
+    full_text = f"{title} {title} {content}".lower()
     
-    # Combined score
-    combined_score = (title_score + content_score) / 2.5
+    # Initialize relevance score
+    relevance_score = 0.0
+    matches_found = 0
     
-    return combined_score >= threshold
+    # Check for currency patterns (high relevance indicators)
+    for pattern in CURRENCY_PATTERNS:
+        if re.search(pattern, full_text, re.IGNORECASE):
+            relevance_score += 0.5
+            matches_found += 1
+            
+    # Check for keyword matches
+    for keyword, weight in KEYWORD_WEIGHTS.items():
+        if keyword.lower() in full_text:
+            relevance_score += weight
+            matches_found += 1
+    
+    # Normalize score based on matches found
+    if matches_found > 0:
+        # Cap at 1.0
+        relevance_score = min(1.0, relevance_score)
+    
+    logger.debug(f"Relevance score: {relevance_score:.2f} (threshold: {threshold})")
+    return relevance_score >= threshold
+
+def get_relevance_keywords() -> List[str]:
+    """Get a list of relevance keywords for searching."""
+    return list(KEYWORD_WEIGHTS.keys())
+
+def calculate_relevance_score(text: str) -> float:
+    """Calculate a relevance score for the given text."""
+    return is_relevant("", text, threshold=0.0)  # We want the score, not the boolean
 
 if __name__ == "__main__":
-    # Test the relevance detection
+    # Test the relevance detector
     test_texts = [
-        "Zimbabwe's currency stabilized today after the central bank's intervention.",
-        "The exchange rate fell to 350 ZWL per USD on the parallel market.",
-        "Football match results for the weekend games in Harare.",
-        "RBZ announces new monetary policy to combat inflation in Zimbabwe."
+        "Zimbabwe's official exchange rate hits 350 ZWL to 1 USD",
+        "RBZ announces new monetary policy measures",
+        "Currency shortage impacts Zimbabwe's economy",
+        "Cricket match between Zimbabwe and South Africa",
+        "Zimbabwe dollar continues to depreciate against the US dollar",
+        "New regulations for bureau de change operators",
+        "Weather forecast for Harare this week"
     ]
     
     for text in test_texts:
+        is_rel = is_relevant("Test", text)
         score = calculate_relevance_score(text)
         print(f"Text: {text}")
-        print(f"Relevance score: {score}")
-        print(f"Is relevant: {score >= 0.4}")
-        print("-" * 50)
+        print(f"Relevant: {is_rel}, Score: {score:.2f}")
+        print("---")

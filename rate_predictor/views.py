@@ -97,58 +97,95 @@ class DashboardView(LoginRequiredMixin, TemplateView):
         context = super().get_context_data(**kwargs)
         
         # Get historical rates for chart
-        historical_rates = ExchangeRate.objects.all().order_by('date')[:90]  # Last 90 days
-        context['historical_rates'] = historical_rates
+        try:
+            historical_rates = ExchangeRate.objects.all().order_by('date')[:90]  # Last 90 days
+            context['historical_rates'] = historical_rates
+            logger.info(f"Fetched {len(historical_rates)} historical rates")
+        except Exception as e:
+            logger.error(f"Error fetching historical rates: {e}")
         
         # Get future predictions for chart
-        future_predictions = RatePrediction.objects.filter(
-            target_date__gte=timezone.now().date()
-        ).order_by('target_date')[:30]  # Next 30 days
-        context['future_predictions'] = future_predictions
+        try:
+            future_predictions = RatePrediction.objects.filter(
+                target_date__gte=timezone.now().date()
+            ).order_by('target_date')[:30]  # Next 30 days
+            context['future_predictions'] = future_predictions
+            logger.info(f"Fetched {len(future_predictions)} future predictions")
+        except Exception as e:
+            logger.error(f"Error fetching future predictions: {e}")
         
         # Get sentiment metrics from recent content
-        context.update(self.get_sentiment_metrics())
+        try:
+            sentiment_metrics = self.get_sentiment_metrics()
+            context.update(sentiment_metrics)
+            logger.info("Fetched sentiment metrics")
+        except Exception as e:
+            logger.error(f"Error fetching sentiment metrics: {e}")
         
         # Calculate trend
-        if len(historical_rates) >= 2:
-            oldest_rate = historical_rates.first().official_rate
-            newest_rate = historical_rates.last().official_rate
-            trend_pct = ((newest_rate - oldest_rate) / oldest_rate) * 100
-            context['trend_percentage'] = abs(trend_pct)
-            context['trend_direction'] = 'up' if trend_pct > 0 else 'down' if trend_pct < 0 else 'stable'
+        try:
+            if len(historical_rates) >= 2:
+                oldest_rate = historical_rates.first().official_rate
+                newest_rate = historical_rates.last().official_rate
+                trend_pct = ((newest_rate - oldest_rate) / oldest_rate) * 100
+                context['trend_percentage'] = abs(trend_pct)
+                context['trend_direction'] = 'up' if trend_pct > 0 else 'down' if trend_pct < 0 else 'stable'
+                logger.info(f"Calculated trend: {context['trend_direction']} ({context['trend_percentage']}%)")
+        except Exception as e:
+            logger.error(f"Error calculating trend: {e}")
         
         # Calculate premium if parallel rate exists
-        if historical_rates and historical_rates[0].parallel_rate:
-            premium = ((historical_rates[0].parallel_rate - historical_rates[0].official_rate) 
-                      / historical_rates[0].official_rate * 100)
-            context['premium_percentage'] = premium
+        try:
+            if historical_rates and historical_rates[0].parallel_rate:
+                premium = ((historical_rates[0].parallel_rate - historical_rates[0].official_rate) 
+                          / historical_rates[0].official_rate * 100)
+                context['premium_percentage'] = premium
+                logger.info(f"Calculated premium: {context['premium_percentage']}%")
+        except Exception as e:
+            logger.error(f"Error calculating premium: {e}")
         
         return context
     
     def get_sentiment_metrics(self):
         """Get sentiment analysis metrics for the dashboard"""
-        from rate_predictor.scrapers.sentiment_analyzer import get_overall_sentiment
-        from rate_predictor.models import Post
-        
-        # Get sentiment metrics for last 7 days
-        sentiment_metrics = get_overall_sentiment(days_back=7)
+        # Safely import sentiment analyzer handling potential import errors
+        try:
+            from rate_predictor.scrapers.sentiment_analyzer import get_overall_sentiment
+            sentiment_metrics = get_overall_sentiment(days_back=7)
+            logger.info("Sentiment metrics fetched successfully")
+        except ImportError as e:
+            logger.warning(f"Could not import sentiment analyzer: {e}")
+            sentiment_metrics = {
+                'positive': 30,
+                'neutral': 50,
+                'negative': 20
+            }
+        except Exception as e:
+            logger.error(f"Error getting sentiment metrics: {e}")
+            sentiment_metrics = {
+                'positive': 30,
+                'neutral': 50,
+                'negative': 20
+            }
         
         # Count posts by source type
-        social_count = Post.objects.filter(
-            source_type='social',
-            published_at__gte=timezone.now() - datetime.timedelta(days=7)
-        ).count()
-        
-        news_count = Post.objects.filter(
-            source_type='news',
-            published_at__gte=timezone.now() - datetime.timedelta(days=7)
-        ).count()
-        
-        # Get high-impact announcements
-        announcements_count = Post.objects.filter(
-            published_at__gte=timezone.now() - datetime.timedelta(days=7),
-            impact_score__gte=0.7
-        ).count()
+        try:
+            social_count = Post.objects.filter(
+                source_type='social',
+                published_at__gte=timezone.now() - datetime.timedelta(days=7)
+            ).count()
+            news_count = Post.objects.filter(
+                source_type='news',
+                published_at__gte=timezone.now() - datetime.timedelta(days=7)
+            ).count()
+            announcements_count = Post.objects.filter(
+                published_at__gte=timezone.now() - datetime.timedelta(days=7),
+                impact_score__gte=0.7
+            ).count()
+            logger.info(f"Post counts - Social: {social_count}, News: {news_count}, Announcements: {announcements_count}")
+        except Exception as e:
+            logger.error(f"Error counting posts: {e}")
+            social_count = news_count = announcements_count = 0
         
         return {
             'sentiment_metrics': sentiment_metrics,
@@ -161,26 +198,56 @@ class DashboardView(LoginRequiredMixin, TemplateView):
         """Handle GET requests and trigger updates"""
         from rate_predictor.tasks import update_model_task
         from rate_predictor.models import RatePrediction, TaskProgress
+        from kombu.exceptions import OperationalError
         
         try:
             # Check if initial training is needed
             initial_training_needed = not RatePrediction.objects.exists()
+            logger.info(f"Initial training needed: {initial_training_needed}")
             
             # Create task progress record
             task_id = 'task_' + timezone.now().strftime('%Y%m%d_%H%M%S')
-            TaskProgress.objects.create(
-                task_id=task_id,
-                task_type='training' if initial_training_needed else 'scraping',
-                status='pending',
-                message='Task starting...'
-            )
+            task_type = 'training' if initial_training_needed else 'scraping'
             
-            # Execute task synchronously since CELERY_TASK_ALWAYS_EAGER is True
-            update_model_task.delay(is_initial=initial_training_needed)
+            task_progress, created = TaskProgress.objects.get_or_create(
+                task_id=task_id,
+                defaults={
+                    'task_type': task_type,
+                    'status': 'pending',
+                    'message': 'Task starting...'
+                }
+            )
+            logger.info(f"Task progress record created: {task_id}")
+            
+            try:
+                # Execute task - handle Celery connection errors gracefully
+                task = update_model_task.delay(is_initial=initial_training_needed)
+                
+                # Update task ID with actual Celery task ID if available
+                if hasattr(task, 'id') and task.id:
+                    task_progress.task_id = task.id
+                    task_progress.save()
+                    logger.info(f"Task ID updated: {task.id}")
+                
+            except OperationalError as e:
+                # Update the task progress with the error
+                task_progress.status = 'failed'
+                task_progress.message = f"Connection error: {str(e)}. Is the message broker running?"
+                task_progress.save()
+                logger.error(f"Error in dashboard task execution: {e}")
+                
+                # Continue with the page load despite the error
+            except Exception as e:
+                # Update the task progress with the error
+                task_progress.status = 'failed'
+                task_progress.message = f"Error: {str(e)}"
+                task_progress.save()
+                logger.error(f"Error in dashboard task execution: {e}")
             
         except Exception as e:
             logger.error(f"Error in dashboard task execution: {e}")
         
+        # Continue with regular page load
         return super().get(request, *args, **kwargs)
 
 

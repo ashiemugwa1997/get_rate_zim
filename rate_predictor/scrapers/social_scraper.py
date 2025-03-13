@@ -1,450 +1,401 @@
 """
-Social media scraper module for ZimRate Predictor
+Social media scraping module for ZimRate Predictor
 
-This module contains functions to scrape social media posts from Twitter (X) 
-and other platforms about Zimbabwean currency exchange rates.
+This module contains functions to gather data from social media platforms
+about Zimbabwe's currency and economy.
 """
 
-import requests
-import json
 import logging
-import time
 import datetime
+import time
+import random
 import re
 from typing import List, Dict, Any, Optional
 from django.utils import timezone
-import random
-import os
-from urllib.parse import urlencode
+from django.conf import settings
+
+from rate_predictor.scrapers.relevance_detector import is_relevant
+from rate_predictor.scrapers.web_utils import get_random_headers, safe_get
 
 # Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler("social_scraper.log"),
-        logging.StreamHandler()
-    ]
-)
 logger = logging.getLogger("social_scraper")
 
-# Keywords to search for related to Zimbabwe's currency and economy
-SEARCH_KEYWORDS = [
-    "Zimbabwe dollar", "ZWL", "Zimbabwe forex", "Zimbabwe exchange rate", 
-    "Zimbabwe USD", "Zimbabwe currency", "RBZ rate", "parallel market Zimbabwe",
-    "Zimbabwe inflation", "Zimbabwe bond note", "Zimbabwe monetary policy",
-    "Zimbabwe black market rate"
-]
+# Flag to track if tweepy is available
+TWEEPY_AVAILABLE = False
 
-# List of influential accounts to monitor (usernames without @)
-INFLUENTIAL_ACCOUNTS = [
-    "ReserveBankZIM",    # Reserve Bank of Zimbabwe
-    "ZimTreasury",       # Ministry of Finance Zimbabwe
-    "MthuliNcube",       # Zimbabwe's Finance Minister
-    "InfoMinZW",         # Zimbabwe Ministry of Information
-    "ZimTradeAlerts",    # Zimbabwe Trade
-    "ZimEye",            # Zimbabwe News
-    "BitiTendai",        # Prominent Zimbabwean politician
-    "ZimLive",           # Zimbabwe News Source
-    "263Chat",           # Popular Zimbabwean News Platform
-    "daddyhope"          # Prominent Zimbabwean activist
+# Try to import tweepy, but handle if it's not available
+try:
+    import tweepy
+    TWEEPY_AVAILABLE = True
+except ImportError:
+    logger.warning("Tweepy not found. Twitter scraping functionality will be disabled.")
+
+# Twitter search keywords
+TWITTER_KEYWORDS = [
+    "zimbabwe dollar", "zwl", "zim dollar", "rtgs", 
+    "exchange rate", "forex", "rbz", "reserve bank", 
+    "parallel market", "black market", "zimbabwe currency"
 ]
 
 
-class TwitterScraper:
-    """Class to handle Twitter (X) scraping operations"""
-    
-    def __init__(self):
-        """Initialize the Twitter scraper with necessary configurations"""
-        # User agent for requests
-        self.user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
-        self.base_url = "https://nitter.net"  # Nitter instance for Twitter scraping
-        self.session = requests.Session()
-        self.session.headers.update({"User-Agent": self.user_agent})
-    
-    def rotate_nitter_instance(self):
-        """Rotate between available Nitter instances to avoid rate limiting"""
-        nitter_instances = [
-            "https://nitter.net",
-            "https://nitter.lacontrevoie.fr",
-            "https://nitter.1d4.us",
-            "https://nitter.kavin.rocks",
-            "https://nitter.poast.org"
-        ]
-        self.base_url = random.choice(nitter_instances)
-        logger.info(f"Rotated to Nitter instance: {self.base_url}")
-    
-    def search_tweets(self, query: str, days_back: int = 7) -> List[Dict[str, Any]]:
-        """
-        Search for tweets matching a query
+def get_twitter_api():
+    """Configure Twitter API client with credentials."""
+    if not TWEEPY_AVAILABLE:
+        logger.warning("Tweepy library not available. Cannot initialize Twitter API.")
+        return None
         
-        Args:
-            query: Search query string
-            days_back: How many days back to search
-            
-        Returns:
-            List of tweet dictionaries
-        """
-        tweets = []
-        params = {"f": "tweets", "q": query}
-        search_url = f"{self.base_url}/search?{urlencode(params)}"
+    try:
+        auth = tweepy.OAuthHandler(
+            settings.TWITTER_API_KEY, 
+            settings.TWITTER_API_SECRET
+        )
+        auth.set_access_token(
+            settings.TWITTER_ACCESS_TOKEN, 
+            settings.TWITTER_ACCESS_SECRET
+        )
+        api = tweepy.API(auth, wait_on_rate_limit=True)
         
-        cutoff_date = timezone.now().date() - datetime.timedelta(days=days_back)
-        
-        try:
-            logger.info(f"Searching Twitter for: {query}")
-            response = self.session.get(search_url, timeout=15)
-            response.raise_for_status()
-            
-            # Basic parsing of the HTML response
-            # Ideally use BeautifulSoup here, but for simplicity using regex
-            tweet_pattern = r'<div class="tweet-content[^>]*>(.*?)</div>.*?<a[^>]*class="tweet-date[^>]*><span[^>]*>(.*?)</span>'
-            username_pattern = r'<a[^>]*class="username"[^>]*>@([^<]+)</a>'
-            
-            tweet_matches = re.finditer(tweet_pattern, response.text, re.DOTALL)
-            username_matches = re.finditer(username_pattern, response.text, re.DOTALL)
-            
-            # Extract content, dates, and usernames
-            for tweet_match, username_match in zip(tweet_matches, username_matches):
-                content = tweet_match.group(1).strip()
-                date_text = tweet_match.group(2).strip()
-                username = username_match.group(1).strip()
-                
-                # Parse date (simplified approach)
-                if "ago" in date_text:
-                    # Recent post (assume within cutoff)
-                    post_date = timezone.now().date()
-                else:
-                    try:
-                        # Format can vary; this is simplified
-                        date_parts = date_text.split()
-                        if len(date_parts) >= 2:
-                            month = date_parts[0]
-                            day = int(date_parts[1].replace(",", ""))
-                            year = int(date_parts[2]) if len(date_parts) > 2 else timezone.now().year
-                            
-                            month_mapping = {
-                                "Jan": 1, "Feb": 2, "Mar": 3, "Apr": 4, "May": 5, "Jun": 6,
-                                "Jul": 7, "Aug": 8, "Sep": 9, "Oct": 10, "Nov": 11, "Dec": 12
-                            }
-                            
-                            if month in month_mapping:
-                                post_date = datetime.date(year, month_mapping[month], day)
-                            else:
-                                continue
-                        else:
-                            continue
-                    except (ValueError, IndexError):
-                        continue
-                
-                # Check if post is within the date range
-                if post_date >= cutoff_date:
-                    tweets.append({
-                        "content": content,
-                        "username": username,
-                        "published_at": post_date,
-                        "url": f"https://twitter.com/{username}/status/PLACEHOLDER",  # Actual URL not easily accessible this way
-                        "platform": "Twitter"
-                    })
-            
-            logger.info(f"Found {len(tweets)} tweets for query: {query}")
-            
-        except requests.RequestException as e:
-            logger.error(f"Error searching Twitter: {e}")
-            # Rotate to another Nitter instance
-            self.rotate_nitter_instance()
-        
-        return tweets
-    
-    def get_user_tweets(self, username: str, days_back: int = 7) -> List[Dict[str, Any]]:
-        """
-        Get tweets from a specific user
-        
-        Args:
-            username: Twitter username (without @)
-            days_back: How many days back to fetch
-            
-        Returns:
-            List of tweet dictionaries
-        """
-        tweets = []
-        user_url = f"{self.base_url}/{username}"
-        
-        cutoff_date = timezone.now().date() - datetime.timedelta(days=days_back)
-        
-        try:
-            logger.info(f"Fetching tweets from user: {username}")
-            response = self.session.get(user_url, timeout=15)
-            
-            if response.status_code == 404:
-                logger.warning(f"User not found: {username}")
-                return tweets
-                
-            response.raise_for_status()
-            
-            # Similar parsing as search_tweets method
-            tweet_pattern = r'<div class="tweet-content[^>]*>(.*?)</div>.*?<a[^>]*class="tweet-date[^>]*><span[^>]*>(.*?)</span>'
-            tweet_matches = re.finditer(tweet_pattern, response.text, re.DOTALL)
-            
-            for match in tweet_matches:
-                content = match.group(1).strip()
-                date_text = match.group(2).strip()
-                
-                # Parse date (simplified)
-                if "ago" in date_text:
-                    post_date = timezone.now().date()
-                else:
-                    try:
-                        date_parts = date_text.split()
-                        if len(date_parts) >= 2:
-                            month = date_parts[0]
-                            day = int(date_parts[1].replace(",", ""))
-                            year = int(date_parts[2]) if len(date_parts) > 2 else timezone.now().year
-                            
-                            month_mapping = {
-                                "Jan": 1, "Feb": 2, "Mar": 3, "Apr": 4, "May": 5, "Jun": 6,
-                                "Jul": 7, "Aug": 8, "Sep": 9, "Oct": 10, "Nov": 11, "Dec": 12
-                            }
-                            
-                            if month in month_mapping:
-                                post_date = datetime.date(year, month_mapping[month], day)
-                            else:
-                                continue
-                        else:
-                            continue
-                    except (ValueError, IndexError):
-                        continue
-                
-                # Check if tweet contains finance-related keywords (simplified)
-                if post_date >= cutoff_date and is_relevant_to_currency(content):
-                    tweets.append({
-                        "content": content,
-                        "username": username,
-                        "published_at": post_date,
-                        "url": f"https://twitter.com/{username}/status/PLACEHOLDER",
-                        "platform": "Twitter"
-                    })
-            
-            logger.info(f"Found {len(tweets)} relevant tweets from {username}")
-            
-        except requests.RequestException as e:
-            logger.error(f"Error fetching tweets from {username}: {e}")
-            self.rotate_nitter_instance()
-        
-        return tweets
+        # Test the credentials
+        api.verify_credentials()
+        logger.info("Twitter API initialized successfully")
+        return api
+    except Exception as e:
+        logger.error(f"Twitter API initialization error: {e}")
+        return None
 
 
-def is_relevant_to_currency(text: str) -> bool:
+def scrape_twitter_posts(keywords: List[str] = None, days_back: int = 7) -> List[Dict]:
     """
-    Check if text is relevant to Zimbabwe currency/exchange rates
+    Scrape Twitter posts related to Zimbabwe's currency using the Twitter API.
     
     Args:
-        text: Text content to check
+        keywords: List of keywords to search for (default uses predefined list)
+        days_back: Number of days back to scrape
         
     Returns:
-        Boolean indicating relevance
+        List of post dictionaries
     """
-    relevant_keywords = [
-        "exchange rate", "forex", "currency", "dollar", "USD", "ZWL", "Zimbabwe dollar", 
-        "RBZ", "Reserve Bank", "inflation", "economy", "finance", "monetary", 
-        "currency trading", "black market", "parallel market", "bond note"
+    posts = []
+    api = get_twitter_api()
+    
+    if not api:
+        logger.error("Twitter API not initialized")
+        return posts
+    
+    # Use provided keywords or default list
+    search_keywords = keywords or TWITTER_KEYWORDS
+    
+    # Construct search query - combine keywords with OR
+    query = " OR ".join([f'"{k}"' for k in search_keywords])
+    query += " lang:en"  # Limit to English tweets
+    
+    cutoff_date = timezone.now() - datetime.timedelta(days=days_back)
+    max_tweets = 300  # Limit the number of tweets to process
+    
+    logger.info(f"Searching Twitter for: {query}")
+    
+    try:
+        # Search for tweets
+        tweets = tweepy.Cursor(
+            api.search_tweets,
+            q=query,
+            lang="en",
+            tweet_mode="extended",
+            count=100,
+            result_type="mixed"  # Get a mix of popular and recent tweets
+        ).items(max_tweets)
+        
+        tweet_count = 0
+        relevant_count = 0
+        
+        for tweet in tweets:
+            tweet_count += 1
+            
+            # Check if tweet is within our time range
+            created_at = tweet.created_at
+            if created_at.replace(tzinfo=timezone.utc) < cutoff_date:
+                continue
+            
+            # Skip retweets (we want original content)
+            if hasattr(tweet, 'retweeted_status'):
+                continue
+                
+            # Get the full text
+            if hasattr(tweet, 'full_text'):
+                content = tweet.full_text
+            else:
+                content = tweet.text
+                
+            # Skip short tweets and likely irrelevant ones
+            if len(content) < 30:
+                continue
+                
+            # Check relevance
+            title = f"Tweet by {tweet.user.screen_name}"
+            if not is_relevant(title, content):
+                continue
+                
+            relevant_count += 1
+            
+            # Create post dictionary
+            post = {
+                "source_name": f"Twitter {tweet.user.screen_name}",
+                "content": content,
+                "published_at": created_at,
+                "platform": "Twitter",
+                "url": f"https://twitter.com/{tweet.user.screen_name}/status/{tweet.id}",
+                "followers": tweet.user.followers_count,
+                "retweets": tweet.retweet_count,
+                "likes": tweet.favorite_count
+            }
+            posts.append(post)
+            
+            # Avoid hitting rate limits
+            if tweet_count % 50 == 0:
+                time.sleep(1)
+                
+        logger.info(f"Scraped {tweet_count} tweets, {relevant_count} were relevant")
+        
+    except tweepy.TweepyException as e:
+        logger.error(f"Twitter API error: {e}")
+    except Exception as e:
+        logger.error(f"Error scraping Twitter: {e}")
+    
+    return posts
+
+
+def calculate_influence_score(post: Dict[str, Any]) -> float:
+    """
+    Calculate an influence score for a social media post.
+    
+    Args:
+        post: Dictionary with post data
+        
+    Returns:
+        Influence score between 0.0 and 1.0
+    """
+    # Base score
+    score = 0.2
+    
+    # Add points based on engagement
+    if post.get('platform') == 'Twitter':
+        followers = post.get('followers', 0)
+        retweets = post.get('retweets', 0)
+        likes = post.get('likes', 0)
+        
+        # Followers impact (capped)
+        if followers > 100000:
+            score += 0.3
+        elif followers > 10000:
+            score += 0.2
+        elif followers > 1000:
+            score += 0.1
+        
+        # Engagement impact
+        engagement = (retweets * 2) + likes
+        if engagement > 1000:
+            score += 0.3
+        elif engagement > 100:
+            score += 0.2
+        elif engagement > 10:
+            score += 0.1
+            
+        # Check for verified accounts
+        if post.get('verified', False):
+            score += 0.1
+    
+    # Check for mentions of banks or government institutions
+    important_entities = [
+        "reserve bank", "rbz", "ministry of finance", "government", 
+        "central bank", "treasury", "imf", "world bank"
     ]
     
-    text_lower = text.lower()
-    return any(keyword.lower() in text_lower for keyword in relevant_keywords)
+    content = post.get('content', '').lower()
+    for entity in important_entities:
+        if entity in content:
+            score += 0.05  # Max 0.25 for entity mentions
+            
+    # Cap the score at 1.0
+    return min(1.0, score)
 
 
 def save_posts_to_db(posts: List[Dict[str, Any]]) -> int:
     """
-    Save scraped social media posts to the database
+    Save scraped social media posts to the database.
     
     Args:
-        posts: List of post dictionaries to save
+        posts: List of post dictionaries
         
     Returns:
-        Number of posts successfully saved
+        Number of posts saved to database
     """
+    # Import models here to avoid circular imports
     from rate_predictor.models import SocialMediaSource, Post
     
     saved_count = 0
     
-    for post in posts:
+    for post_data in posts:
         try:
-            # Get or create social media source based on username and platform
-            source, _ = SocialMediaSource.objects.get_or_create(
-                name=post["username"],
-                platform=post["platform"],
+            # Check if post already exists to avoid duplicates
+            if Post.objects.filter(url=post_data['url']).exists():
+                continue
+                
+            # Get or create the social media source
+            source_name = post_data['source_name'].split(' ')[1] if ' ' in post_data['source_name'] else post_data['source_name']
+            
+            source, created = SocialMediaSource.objects.get_or_create(
+                name=source_name,
+                platform=post_data['platform'],
                 defaults={
-                    "account_id": post["username"],
-                    "influence_score": 1.0  # Default score, can be updated later
+                    'account_id': source_name,
+                    'influence_score': 0.5,
+                    'is_active': True
                 }
             )
             
-            # Check if post already exists (simplified check by content and username)
-            if not Post.objects.filter(
+            # Calculate influence score for this post
+            impact_score = calculate_influence_score(post_data)
+            
+            # Create the post
+            Post.objects.create(
+                source_type='social',
                 social_source=source,
-                content=post["content"][:100]  # Check first 100 chars for uniqueness
-            ).exists():
-                # Create new post
-                db_post = Post(
-                    social_source=source,
-                    source_type='social',
-                    content=post["content"],
-                    url=post.get("url", ""),
-                    published_at=timezone.make_aware(
-                        datetime.datetime.combine(post["published_at"], datetime.time())
-                    ),
-                    # These will be updated by the sentiment analysis process
-                    sentiment='neutral',
-                    impact_score=0.0
-                )
-                db_post.save()
-                saved_count += 1
-        
+                content=post_data['content'],
+                url=post_data['url'],
+                published_at=post_data['published_at'],
+                sentiment='neutral',  # Default sentiment, will be updated by analyzer
+                sentiment_score=0.0,  # Default sentiment score
+                impact_score=impact_score
+            )
+            
+            saved_count += 1
+            logger.info(f"Saved social media post from {source_name}")
+            
         except Exception as e:
-            logger.error(f"Error saving social post from {post.get('username', 'Unknown')}: {e}")
+            logger.error(f"Error saving social media post to database: {e}")
+            continue
     
-    logger.info(f"Saved {saved_count} new social media posts to the database")
+    logger.info(f"Saved {saved_count} new social media posts")
     return saved_count
 
 
-def run_twitter_scraper(days_back: int = 7, initial_scrape: bool = False) -> int:
+def scrape_key_accounts(days_back: int = 7) -> List[Dict[str, Any]]:
     """
-    Run the Twitter scraper to collect tweets
+    Scrape posts from key financial accounts/sources.
     
     Args:
-        days_back: Number of days back to consider
-        initial_scrape: Whether this is the initial scrape
+        days_back: Number of days to scrape
         
     Returns:
-        Number of posts scraped and saved
+        List of post dictionaries
     """
-    twitter = TwitterScraper()
-    all_tweets = []
+    from rate_predictor.models import SocialMediaSource
     
-    # If initial scrape, use 2 years worth of data
-    if initial_scrape:
-        days_back = 365 * 2
+    posts = []
+    api = get_twitter_api()
     
-    # Scrape tweets from influential accounts
-    for account in INFLUENTIAL_ACCOUNTS:
+    if not api:
+        return posts
+    
+    # Get key accounts from database
+    key_accounts = SocialMediaSource.objects.filter(
+        platform='Twitter',
+        is_active=True,
+        influence_score__gte=0.7
+    )
+    
+    for account in key_accounts:
         try:
-            tweets = twitter.get_user_tweets(account, days_back)
-            all_tweets.extend(tweets)
-            # Be respectful to the service
-            time.sleep(random.uniform(2, 5))
+            logger.info(f"Scraping tweets from {account.name}")
+            
+            # Get tweets from this user
+            user_tweets = api.user_timeline(
+                screen_name=account.account_id,
+                count=50,
+                tweet_mode="extended"
+            )
+            
+            cutoff_date = timezone.now() - datetime.timedelta(days=days_back)
+            
+            for tweet in user_tweets:
+                # Check if within time range
+                if tweet.created_at.replace(tzinfo=timezone.utc) < cutoff_date:
+                    continue
+                
+                # Get the full text
+                if hasattr(tweet, 'full_text'):
+                    content = tweet.full_text
+                else:
+                    content = tweet.text
+                
+                # Check relevance - for key accounts, use a lower threshold
+                title = f"Tweet by {tweet.user.screen_name}"
+                if not is_relevant(title, content, threshold=0.3):
+                    continue
+                
+                # Add to our results
+                posts.append({
+                    "source_name": f"Twitter {tweet.user.screen_name}",
+                    "content": content,
+                    "published_at": tweet.created_at,
+                    "platform": "Twitter",
+                    "url": f"https://twitter.com/{tweet.user.screen_name}/status/{tweet.id}",
+                    "followers": tweet.user.followers_count,
+                    "retweets": tweet.retweet_count,
+                    "likes": tweet.favorite_count,
+                    "verified": tweet.user.verified
+                })
+                
+            # Avoid hitting rate limits
+            time.sleep(1)
+            
+        except tweepy.TweepyException as e:
+            logger.error(f"Twitter API error for {account.name}: {e}")
         except Exception as e:
-            logger.error(f"Error scraping tweets from {account}: {e}")
+            logger.error(f"Error scraping tweets from {account.name}: {e}")
     
-    # Scrape tweets based on keywords
-    for keyword in SEARCH_KEYWORDS:
-        try:
-            tweets = twitter.search_tweets(keyword, days_back)
-            all_tweets.extend(tweets)
-            # Be respectful to the service
-            time.sleep(random.uniform(2, 5))
-        except Exception as e:
-            logger.error(f"Error searching tweets for keyword {keyword}: {e}")
-    
-    # Save unique tweets to the database
-    # Simple deduplication by content
-    unique_tweets = []
-    seen_content = set()
-    
-    for tweet in all_tweets:
-        # Use first 100 chars as a signature to avoid duplicates
-        content_signature = tweet["content"][:100]
-        if content_signature not in seen_content:
-            seen_content.add(content_signature)
-            unique_tweets.append(tweet)
-    
-    # Save posts to database
-    saved_count = save_posts_to_db(unique_tweets)
-    
-    return saved_count
-
-
-def train_model_with_initial_data() -> None:
-    """
-    Train the model using initial historical social media data
-    """
-    from rate_predictor.scrapers.sentiment_analyzer import analyze_posts_batch, get_overall_sentiment
-    
-    logger.info("Training model with initial social media data...")
-    
-    try:
-        # Get 2 years of social media data
-        saved_count = run_twitter_scraper(days_back=365*2, initial_scrape=True)
-        logger.info(f"Scraped and saved {saved_count} historical social media posts")
-        
-        # Analyze sentiment of all posts
-        processed_count = analyze_posts_batch(days_back=365*2)
-        logger.info(f"Processed sentiment for {processed_count} posts")
-        
-        # Get baseline sentiment metrics
-        baseline_metrics = get_overall_sentiment(days_back=365*2)
-        logger.info(f"Established baseline social media sentiment metrics: {baseline_metrics}")
-        
-    except Exception as e:
-        logger.error(f"Error during initial social media model training: {e}")
-        raise
-    
-    logger.info("Initial social media model training completed successfully")
-
-
-def update_model_incrementally(days_back: int = 7) -> None:
-    """
-    Update the model with new social media data incrementally
-    
-    Args:
-        days_back: Number of days of new data to process
-    """
-    from rate_predictor.scrapers.sentiment_analyzer import analyze_posts_batch, get_overall_sentiment
-    
-    logger.info(f"Updating model with social media data from last {days_back} days...")
-    
-    try:
-        # Process new data
-        processed_count = analyze_posts_batch(days_back)
-        logger.info(f"Processed sentiment for {processed_count} new posts")
-        
-        # Get updated sentiment metrics
-        current_metrics = get_overall_sentiment(days_back)
-        logger.info(f"Updated social media sentiment metrics: {current_metrics}")
-        
-    except Exception as e:
-        logger.error(f"Error during incremental social media model update: {e}")
-        raise
-    
-    logger.info("Incremental social media model update completed successfully")
+    return posts
 
 
 def run_scraper(days_back: int = 7, initial_scrape: bool = False) -> int:
     """
-    Main function to run the social media scrapers
+    Run the social media scraper.
     
     Args:
-        days_back: Number of days back to consider
-        initial_scrape: Whether this is the initial scrape
+        days_back: Number of days back to scrape
+        initial_scrape: Whether this is an initial scrape
         
     Returns:
-        Number of posts scraped and saved
+        Number of posts saved
     """
-    logger.info(f"Starting social media scraping process for the past {days_back} days")
+    logger.info(f"Starting social media scraper for past {days_back} days")
     
-    # Currently only Twitter scraping implemented
-    saved_count = run_twitter_scraper(days_back, initial_scrape)
-    
-    # Update the model based on whether this is initial or incremental
+    # Adjust days back for initial scrape
     if initial_scrape:
-        train_model_with_initial_data()
-    else:
-        update_model_incrementally(days_back)
+        days_back = 30  # For initial scrape, go back a month
+        logger.info(f"Initial scrape - extending to {days_back} days")
     
-    logger.info(f"Completed social media scraping. Saved {saved_count} new posts.")
+    # Get posts from keyword search
+    keyword_posts = scrape_twitter_posts(days_back=days_back)
+    logger.info(f"Scraped {len(keyword_posts)} posts from keyword search")
+    
+    # Get posts from key accounts
+    account_posts = scrape_key_accounts(days_back=days_back)
+    logger.info(f"Scraped {len(account_posts)} posts from key accounts")
+    
+    # Combine results
+    all_posts = keyword_posts + account_posts
+    
+    # Sort by date, newest first
+    all_posts.sort(key=lambda x: x["published_at"], reverse=True)
+    
+    # Save to database
+    saved_count = save_posts_to_db(all_posts)
+    
+    logger.info(f"Social media scraping completed. Total posts saved: {saved_count}")
     return saved_count
 
 
 if __name__ == "__main__":
-    # When run as script, execute the scraper with initial training
-    run_scraper(initial_scrape=True)
+    # For testing the scraper from command line
+    run_scraper(days_back=7, initial_scrape=False)

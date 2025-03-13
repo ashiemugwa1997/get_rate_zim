@@ -1,1 +1,58 @@
 INFO 2025-03-13 17:35:20,007 autoreload 7292 24016 Watching for file changes with StatReloader
+INFO 2025-03-13 17:49:07,564 autoreload 7292 24016 D:\get_rate_zim\rate_predictor\templatetags\custom_filters.py changed, reloading.
+INFO 2025-03-13 17:49:08,971 autoreload 13176 13464 Watching for file changes with StatReloader
+INFO 2025-03-13 18:49:07,419 autoreload 13176 13464 D:\get_rate_zim\rate_predictor\templatetags\custom_filters.py changed, reloading.
+INFO 2025-03-13 18:49:08,840 autoreload 27784 16216 Watching for file changes with StatReloader
+INFO 2025-03-13 18:56:28,715 autoreload 27784 16216 D:\get_rate_zim\get_rate_zim\settings.py changed, reloading.
+INFO 2025-03-13 18:56:29,601 autoreload 2632 23344 Watching for file changes with StatReloader
+INFO 2025-03-13 18:56:32,034 autoreload 2632 23344 D:\get_rate_zim\rate_predictor\templatetags\__init__.py changed, reloading.
+INFO 2025-03-13 18:56:32,931 autoreload 24884 30352 Watching for file changes with StatReloader
+INFO 2025-03-13 18:56:35,339 autoreload 24884 30352 D:\get_rate_zim\rate_predictor\templatetags\custom_filters.py changed, reloading.
+INFO 2025-03-13 18:56:36,164 autoreload 26628 3588 Watching for file changes with StatReloader
+INFO 2025-03-13 18:57:33,838 autoreload 26628 3588 D:\get_rate_zim\rate_predictor\views.py changed, reloading.
+INFO 2025-03-13 18:57:34,701 autoreload 22260 28916 Watching for file changes with StatReloader
+INFO 2025-03-13 18:58:19,905 autoreload 22260 28916 D:\get_rate_zim\get_rate_zim\settings.py changed, reloading.
+INFO 2025-03-13 18:58:20,794 autoreload 23776 24204 Watching for file changes with StatReloader
+ERROR 2025-03-13 18:58:27,333 log 23776 15880 Internal Server Error: /rate_predictor/dashboard/
+Traceback (most recent call last):
+  File "D:\b\be\lib\site-packages\django\core\handlers\exception.py", line 55, in inner
+    response = get_response(request)
+  File "D:\b\be\lib\site-packages\django\core\handlers\base.py", line 197, in _get_response
+    response = wrapped_callback(request, *callback_args, **callback_kwargs)
+  File "D:\b\be\lib\site-packages\django\views\generic\base.py", line 103, in view
+    return self.dispatch(request, *args, **kwargs)
+  File "D:\b\be\lib\site-packages\django\contrib\auth\mixins.py", line 73, in dispatch
+    return super().dispatch(request, *args, **kwargs)
+  File "D:\b\be\lib\site-packages\django\views\generic\base.py", line 142, in dispatch
+    return handler(request, *args, **kwargs)
+  File "D:\get_rate_zim\rate_predictor\views.py", line 162, in get
+    from rate_predictor.tasks import update_model_task
+  File "D:\get_rate_zim\rate_predictor\tasks.py", line 6, in <module>
+    from rate_predictor.scrapers.social_scraper import run_scraper
+  File "D:\get_rate_zim\rate_predictor\scrapers\social_scraper.py", line 8, in <module>
+    import tweepy
+ModuleNotFoundError: No module named 'tweepy'
+INFO 2025-03-13 19:01:14,670 autoreload 23776 24204 D:\get_rate_zim\rate_predictor\views.py changed, reloading.
+INFO 2025-03-13 19:01:15,571 autoreload 27404 23940 Watching for file changes with StatReloader
+INFO 2025-03-13 19:02:29,678 autoreload 23056 5204 Watching for file changes with StatReloader
+WARNING 2025-03-13 19:02:33,435 connection 23056 26792 No hostname was supplied. Reverting to default 'localhost'
+ERROR 2025-03-13 19:02:39,580 views 23056 26792 Error in dashboard task execution: [WinError 10061] No connection could be made because the target machine actively refused it
+WARNING 2025-03-13 19:02:39,844 log 23056 26792 Not Found: /api/task-progress/
+ERROR 2025-03-13 19:03:25,099 views 23056 23860 Error in dashboard task execution: [WinError 10061] No connection could be made because the target machine actively refused it
+WARNING 2025-03-13 19:03:25,207 log 23056 23860 Not Found: /api/task-progress/
+INFO 2025-03-13 19:03:35,813 autoreload 23056 5204 D:\get_rate_zim\rate_predictor\views.py changed, reloading.
+INFO 2025-03-13 19:03:36,570 autoreload 26240 8748 Watching for file changes with StatReloader
+WARNING 2025-03-13 19:06:44,522 connection 26240 25376 No hostname was supplied. Reverting to default 'localhost'
+ERROR 2025-03-13 19:06:50,624 views 26240 25376 Error in dashboard task execution: [WinError 10061] No connection could be made because the target machine actively refused it
+WARNING 2025-03-13 19:06:50,814 log 26240 25376 Not Found: /api/task-progress/
+INFO 2025-03-13 19:11:46,052 autoreload 26240 8748 D:\get_rate_zim\rate_predictor\views.py changed, reloading.
+INFO 2025-03-13 19:11:46,774 autoreload 24540 25196 Watching for file changes with StatReloader
+INFO 2025-03-13 19:12:18,399 autoreload 24540 25196 D:\get_rate_zim\get_rate_zim\settings.py changed, reloading.
+INFO 2025-03-13 19:12:19,091 autoreload 23348 25644 Watching for file changes with StatReloader
+WARNING 2025-03-13 19:13:29,280 connection 23348 28508 No hostname was supplied. Reverting to default 'localhost'
+ERROR 2025-03-13 19:13:35,391 views 23348 28508 Error in dashboard task execution: [WinError 10061] No connection could be made because the target machine actively refused it
+WARNING 2025-03-13 19:13:35,537 log 23348 28508 Not Found: /api/task-progress/
+INFO 2025-03-13 19:18:10,040 autoreload 23348 25644 D:\get_rate_zim\rate_predictor\views.py changed, reloading.
+INFO 2025-03-13 19:18:11,142 autoreload 25260 6648 Watching for file changes with StatReloader
+INFO 2025-03-13 19:18:17,673 autoreload 25260 6648 D:\get_rate_zim\rate_predictor\views.py changed, reloading.
+INFO 2025-03-13 19:18:18,307 autoreload 15836 26800 Watching for file changes with StatReloader

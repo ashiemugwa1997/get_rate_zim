@@ -2,34 +2,28 @@ from django import template
 
 register = template.Library()
 
-@register.filter
+@register.filter(name='mul')
 def mul(value, arg):
-    """Multiply the arg by the value."""
+    """Multiply the value by the argument"""
     try:
         return float(value) * float(arg)
     except (ValueError, TypeError):
-        return 0
+        return None
 
-@register.filter
-def div(value, arg):
-    """Divide the value by the arg."""
-    try:
-        return float(value) / float(arg)
-    except (ValueError, TypeError, ZeroDivisionError):
-        return 0
-
-@register.filter
+@register.filter(name='sub')
 def sub(value, arg):
-    """Subtract the arg from the value."""
+    """Subtract the argument from the value"""
     try:
         return float(value) - float(arg)
     except (ValueError, TypeError):
-        return 0
+        return None
 
-@register.filter
-def add(value, arg):
-    """Add the arg to the value."""
+@register.filter(name='div')
+def div(value, arg):
+    """Divide the value by the argument"""
     try:
-        return float(value) + float(arg)
+        if float(arg) != 0:
+            return float(value) / float(arg)
+        return None
     except (ValueError, TypeError):
-        return 0
+        return None

@@ -1,7 +1,7 @@
-Django==5.1.7
+Django>=3.2,<5.1
 celery==5.4.0
-django-celery-beat==2.6.0
-django-celery-results==2.5.1
+django-celery-beat>=2.5.0
+django-celery-results>=2.4.0
 requests==2.31.0
 beautifulsoup4==4.12.3
 kombu==5.3.5
@@ -12,3 +12,14 @@ python-dateutil==2.9.0
 tzdata==2024.1
 amqp==5.2.0
 lxml==5.2.1
+# Enhanced scraping dependencies
+aiohttp==3.9.3
+backoff==2.2.1
+fake-useragent==1.4.0
+python-decouple==3.8
+tweepy==4.14.0
+spacy==3.7.2
+redis==5.0.1
+psycopg2-binary==2.9.9
+# Uncomment this line to download the spacy model
+# python -m spacy download en_core_web_sm

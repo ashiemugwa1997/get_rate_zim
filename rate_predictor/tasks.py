@@ -20,6 +20,7 @@ def update_progress(task_id, task_type, progress, message, status='running'):
                 'status': status
             }
         )
+        logger.info(f"Updated progress for task {task_id}: {progress}% - {message}")
     except Exception as e:
         logger.error(f"Error updating progress: {e}")
 
@@ -86,8 +87,10 @@ def update_model_task(self, is_initial=False):
     """Task to update the model (can be used for both initial and incremental updates)"""
     try:
         if is_initial and not RatePrediction.objects.exists():
+            logger.info("Starting initial model training")
             return initial_model_training.delay()
         else:
+            logger.info("Starting periodic model update")
             return update_model_periodic.delay()
     except Exception as e:
         logger.error(f"Error in update_model_task: {e}")

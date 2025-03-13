@@ -690,3 +690,7 @@ Traceback (most recent call last):
 django.template.exceptions.TemplateSyntaxError: <ExtendsNode: extends 'base.html'> must be the first tag in the template.
 2025-03-11 16:13:37,564 - rate_predictor.views - ERROR - Error in dashboard task execution: [WinError 10061] No connection could be made because the target machine actively refused it
 2025-03-11 16:13:37,815 - django.request - WARNING - Not Found: /api/task-progress/
+2025-03-13 17:21:20,415 - kombu.connection - WARNING - No hostname was supplied. Reverting to default 'localhost'
+2025-03-13 17:21:26,506 - rate_predictor.views - ERROR - Error in dashboard task execution: [WinError 10061] No connection could be made because the target machine actively refused it
+2025-03-13 17:21:26,620 - django.request - WARNING - Not Found: /api/task-progress/
+2025-03-13 17:32:05,859 - django.utils.autoreload - INFO - D:\get_rate_zim\get_rate_zim\settings.py changed, reloading.
