@@ -1,0 +1,14 @@
+Django==5.1.7
+celery==5.4.0
+django-celery-beat==2.6.0
+django-celery-results==2.5.1
+requests==2.31.0
+beautifulsoup4==4.12.3
+kombu==5.3.5
+pandas==2.2.1
+numpy==1.26.4
+gunicorn==21.2.0
+python-dateutil==2.9.0
+tzdata==2024.1
+amqp==5.2.0
+lxml==5.2.1
