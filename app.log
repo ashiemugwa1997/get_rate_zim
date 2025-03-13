@@ -56,3 +56,24 @@ INFO 2025-03-13 19:18:10,040 autoreload 23348 25644 D:\get_rate_zim\rate_predict
 INFO 2025-03-13 19:18:11,142 autoreload 25260 6648 Watching for file changes with StatReloader
 INFO 2025-03-13 19:18:17,673 autoreload 25260 6648 D:\get_rate_zim\rate_predictor\views.py changed, reloading.
 INFO 2025-03-13 19:18:18,307 autoreload 15836 26800 Watching for file changes with StatReloader
+INFO 2025-03-13 19:19:54,196 views 15836 29000 Initial training needed: True
+INFO 2025-03-13 19:19:54,199 views 15836 29000 Task progress record created: task_20250313_171954
+WARNING 2025-03-13 19:19:54,210 connection 15836 29000 No hostname was supplied. Reverting to default 'localhost'
+ERROR 2025-03-13 19:20:00,330 views 15836 29000 Error in dashboard task execution: [WinError 10061] No connection could be made because the target machine actively refused it
+INFO 2025-03-13 19:20:00,331 views 15836 29000 Fetched 0 historical rates
+INFO 2025-03-13 19:20:00,332 views 15836 29000 Fetched 0 future predictions
+INFO 2025-03-13 19:20:00,334 views 15836 29000 Sentiment metrics fetched successfully
+INFO 2025-03-13 19:20:00,334 views 15836 29000 Post counts - Social: 0, News: 0, Announcements: 0
+INFO 2025-03-13 19:20:00,335 views 15836 29000 Fetched sentiment metrics
+WARNING 2025-03-13 19:20:00,515 log 15836 29000 Not Found: /api/task-progress/
+INFO 2025-03-13 19:22:20,068 views 15836 27392 Initial training needed: True
+INFO 2025-03-13 19:22:20,071 views 15836 27392 Task progress record created: task_20250313_172220
+ERROR 2025-03-13 19:22:26,194 views 15836 27392 Error in dashboard task execution: [WinError 10061] No connection could be made because the target machine actively refused it
+INFO 2025-03-13 19:22:26,199 views 15836 27392 Fetched 0 historical rates
+INFO 2025-03-13 19:22:26,199 views 15836 27392 Fetched 0 future predictions
+INFO 2025-03-13 19:22:26,199 views 15836 27392 Sentiment metrics fetched successfully
+INFO 2025-03-13 19:22:26,199 views 15836 27392 Post counts - Social: 0, News: 0, Announcements: 0
+INFO 2025-03-13 19:22:26,199 views 15836 27392 Fetched sentiment metrics
+WARNING 2025-03-13 19:22:26,343 log 15836 27392 Not Found: /api/task-progress/
+INFO 2025-03-13 19:25:11,136 autoreload 15836 26800 D:\get_rate_zim\rate_predictor\scrapers\news_scraper.py changed, reloading.
+INFO 2025-03-13 19:25:11,875 autoreload 28792 17728 Watching for file changes with StatReloader

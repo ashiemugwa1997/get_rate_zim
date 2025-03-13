@@ -413,3 +413,11 @@ async def run_news_scraper_async(days_back: int = 7) -> int:
 if __name__ == "__main__":
     # For testing the scraper from command line
     run_news_scraper(days_back=3, initial_scrape=False)
+
+# New function to fetch last 2000 articles and train ML model
+def fetch_and_train_model() -> None:
+    logger.info("Fetching last 2000 articles and training ML model...")
+    articles = scrape_all_news_sources(days_back=365 * 2)  # Adjust days_back to fetch more articles
+    save_articles_to_db(articles)
+    train_model_with_initial_data()
+    logger.info("Model training completed.")
